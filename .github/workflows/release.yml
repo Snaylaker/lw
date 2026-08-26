@@ -1,0 +1,98 @@
+name: release
+
+# SPEC §13 defines the release contract consumed by install.sh.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: existing version tag to build and publish
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate release tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -eu
+          printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'
+          tagged=$(git rev-parse "refs/tags/$TAG^{commit}")
+          test "$(git rev-parse HEAD)" = "$tagged"
+
+      - name: Verify
+        run: |
+          go mod verify
+          go build ./...
+          go vet ./...
+          test -z "$(gofmt -l ./cmd ./internal)"
+          go test ./...
+          go test -race ./...
+          shellcheck install.sh scripts/generate-third-party-notices.sh
+          ./scripts/generate-third-party-notices.sh
+          git diff --exit-code -- THIRD_PARTY_NOTICES.md
+
+      - name: Build reproducible release assets
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -eu
+          VERSION="${TAG#v}"
+          mkdir -p dist
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            work="$(mktemp -d)"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+              -trimpath \
+              -ldflags "-s -w -X github.com/snaylaker/lw/internal/cli.Version=${TAG}" \
+              -o "$work/lw" ./cmd/lw
+            cp LICENSE THIRD_PARTY_NOTICES.md README.md "$work/"
+            tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+              -C "$work" -cf - LICENSE README.md THIRD_PARTY_NOTICES.md lw |
+              gzip -n >"dist/lw_${VERSION}_${os}_${arch}.tar.gz"
+            rm -rf "$work"
+          done
+          cd dist
+          sha256sum lw_*.tar.gz >checksums.txt
+          sha256sum --check checksums.txt
+
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -eu
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            printf 'error: release %s already exists; refusing to replace its assets\n' "$TAG" >&2
+            exit 1
+          fi
+          gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag

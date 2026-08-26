@@ -1,0 +1,16 @@
+# Build output. `go build` with no -o drops a binary named after the package
+# directory in the working directory, so both spellings are covered.
+/dist/
+/lw
+/lw.exe
+/cmd/lw/lw
+/cmd/lw/lw.exe
+
+# Cross-compiled and one-off local binaries, e.g. `go build -o lw-linux-arm64`.
+/lw-*
+!/lw-*.go
+
+*.test
+*.out
+
+.DS_Store
