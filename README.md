@@ -149,6 +149,31 @@ use stderr, so command substitution remains safe.
 
 ## Coding agents
 
+### Start ticketed work from an agent
+
+If you are a local coding agent reading this, create or reuse the worktree before changing files:
+
+1. Read the exact Linear issue identifier from the user's request. Ask for it if it is missing;
+   do not guess.
+2. Resolve the current repository root with `git rev-parse --show-toplevel`.
+3. Run `lw` non-interactively with both values:
+
+   ```sh
+   repo="$(git rev-parse --show-toplevel)"
+   worktree="$(lw --issue TEAM-123 --repo "$repo")"
+   ```
+
+4. Continue the task from `$worktree` and run `lw context` there before making changes.
+5. If your harness cannot change its workspace, give the user the exact command that starts a new
+   session of your own agent at the absolute path printed by `lw`:
+
+   ```sh
+   cd "/absolute/worktree/path" && <your-agent-command>
+   ```
+
+Use your current agent's CLI and preserve any flags the user needs. Replace the placeholders with
+real values, and do not launch a nested agent unless the user explicitly asks you to do so.
+
 Every `lw` worktree carries local issue metadata. `lw context` exposes it without contacting
 Linear:
 
