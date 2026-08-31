@@ -60,18 +60,19 @@ func TestMetadataIsPlainDocumentedJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatalf("unmarshalling %s: %v", data, err)
 	}
-	// SPEC §5 gives the file's content literally, all five keys present. This
-	// file is the product's entire integration surface: a consumer reading
+	// The spec gives the file's content literally, all keys present. This file
+	// is the product's entire integration surface: a consumer reading
 	// `summary` on a fresh worktree must get "", never undefined.
 	want := map[string]any{
 		"identifier": "ENG-3971",
 		"title":      "Something to do in ENG-3971",
 		"url":        "https://linear.app/acme/issue/ENG-3971",
 		"team":       "ENG",
+		"branch":     "ENG-3971",
 		"summary":    "",
 	}
 	if len(fields) != len(want) {
-		t.Fatalf("lw.json = %v, want exactly the five fields of SPEC §5", fields)
+		t.Fatalf("lw.json = %v, want exactly the documented fields", fields)
 	}
 	for key, value := range want {
 		if fields[key] != value {
@@ -151,7 +152,7 @@ func TestUpdateSummaryNeedsMetadataToUpdate(t *testing.T) {
 	}
 }
 
-// SPEC §5: metadata naming a branch that no longer exists is reaped on the next
+// Metadata naming a branch that no longer exists is reaped on the next
 // command. The realistic route there is switching the worktree off the issue
 // branch and deleting it — git refuses to delete a branch a worktree holds.
 func TestOrphanedMetadataIsRemovedWhenTheBranchIsGone(t *testing.T) {

@@ -96,14 +96,14 @@ func (m *Launcher) chooseIssue(issue domain.Issue) tea.Cmd {
 	if m.deps.PreselectRepo != nil {
 		repo := *m.deps.PreselectRepo
 		m.currentRepo = &repo
-		return m.startFlow(issue)
+		return m.prepareBranch(issue)
 	}
 	if m.deps.RepoForIssue != nil {
 		if repo, ok := m.deps.RepoForIssue(issue); ok {
 			chosen := repo
 			m.currentRepo = &chosen
 			safelyRecordRepo(m.deps.RecordRepoUse, issue, repo)
-			return m.startFlow(issue)
+			return m.prepareBranch(issue)
 		}
 	}
 	return m.openRepos(issue)

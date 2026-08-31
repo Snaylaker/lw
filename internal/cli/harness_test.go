@@ -100,6 +100,7 @@ type harness struct {
 	credential *fakeCredentialRunner
 	vault      *fakeVault
 	gitRun     gitrepo.Runner
+	child      ChildRunner
 }
 
 func newHarness(t *testing.T) *harness {
@@ -177,6 +178,7 @@ func (h *harness) deps() Deps {
 		Vault:      h.vault,
 		Now:        func() time.Time { return testNow },
 		Launch:     h.launchLauncher,
+		Child:      h.child,
 	}
 }
 

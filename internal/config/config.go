@@ -69,13 +69,33 @@ type PinToggle struct {
 	IDs    []string
 }
 
+// BranchRule is one repository's safe branch-name template. Templates are
+// expanded by lw; they are data, never shell commands.
+type BranchRule struct {
+	Template string `json:"template"`
+}
+
+// BranchVariables holds explicit values shared by branch templates. Username
+// is configured rather than guessed from git's human-readable user.name.
+type BranchVariables struct {
+	Username string `json:"username,omitempty"`
+}
+
+// BranchNaming maps a stable remote repository key (for example
+// gitlab.example.com/group/repo) or an absolute checkout path to its rule.
+type BranchNaming struct {
+	Variables    BranchVariables       `json:"variables,omitempty"`
+	ByRepository map[string]BranchRule `json:"byRepository,omitempty"`
+}
+
 // StoredConfig is the whole file. Every section is optional, and unknown keys
 // are ignored on read and dropped on the next write. No secret is ever stored
 // here: CredentialCommand names a way to *fetch* the key, and the key itself
 // never comes back to this file.
 type StoredConfig struct {
-	Repos *RepoPreferences `json:"repos,omitempty"`
-	Pins  *PinPreferences  `json:"pins,omitempty"`
+	Repos        *RepoPreferences `json:"repos,omitempty"`
+	Pins         *PinPreferences  `json:"pins,omitempty"`
+	BranchNaming *BranchNaming    `json:"branchNaming,omitempty"`
 	// WorktreeRoot holds the checkouts, one subdirectory per repository. Empty
 	// means DefaultWorktreeRoot. Absolute or "~"-prefixed, so the file survives
 	// a home move.
@@ -142,11 +162,27 @@ func ReadStoredConfig(path string) (*StoredConfig, error) {
 	stored := &StoredConfig{
 		Repos:             sanitizeRepoPreferences(record.Get("repos")),
 		Pins:              sanitizePinPreferences(record.Get("pins")),
+		BranchNaming:      sanitizeBranchNaming(record.Get("branchNaming")),
 		WorktreeRoot:      sanitizePathValue(record.Get("worktreeRoot")),
 		CredentialCommand: sanitizeCommandValue(record.Get("credentialCommand")),
 		PruneMerged:       sanitizeBoolValue(record.Get("pruneMerged")),
 	}
 	return stored, nil
+}
+
+// BranchRuleFor returns the first repository rule matching keys, in caller
+// priority order, plus the explicitly configured username variable.
+func BranchRuleFor(stored *StoredConfig, keys ...string) (template, username string, ok bool) {
+	if stored == nil || stored.BranchNaming == nil {
+		return "", "", false
+	}
+	username = stored.BranchNaming.Variables.Username
+	for _, key := range keys {
+		if rule, found := stored.BranchNaming.ByRepository[key]; found && rule.Template != "" {
+			return rule.Template, username, true
+		}
+	}
+	return "", username, false
 }
 
 // RepoRoots are the directories the repo picker scans, tilde-expanded and made
@@ -497,6 +533,37 @@ func sanitizeRepoPreferences(raw json.RawMessage) *RepoPreferences {
 		return nil
 	}
 	return prefs
+}
+
+func sanitizeBranchNaming(raw json.RawMessage) *BranchNaming {
+	record, ok := AsRecord(raw)
+	if !ok {
+		return nil
+	}
+	result := &BranchNaming{ByRepository: map[string]BranchRule{}}
+	if variables, ok := AsRecord(record.Get("variables")); ok {
+		result.Variables.Username = sanitizeCommandValue(variables.Get("username"))
+	}
+	if repositories, ok := AsRecord(record.Get("byRepository")); ok {
+		for key, rawRule := range repositories {
+			rule, ok := AsRecord(rawRule)
+			if !ok {
+				continue
+			}
+			name := strings.TrimSpace(key)
+			template := sanitizeCommandValue(rule.Get("template"))
+			if name != "" && template != "" {
+				result.ByRepository[name] = BranchRule{Template: template}
+			}
+		}
+	}
+	if result.Variables.Username == "" && len(result.ByRepository) == 0 {
+		return nil
+	}
+	if len(result.ByRepository) == 0 {
+		result.ByRepository = nil
+	}
+	return result
 }
 
 func sanitizePinPreferences(raw json.RawMessage) *PinPreferences {

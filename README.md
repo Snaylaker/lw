@@ -10,6 +10,84 @@ It reads Linear, creates or reuses a local worktree, writes small local metadata
 It does not start an editor, shell, terminal multiplexer, or coding agent. `lw` is independent
 and is not affiliated with or endorsed by Linear.
 
+## Flagship features
+
+### 1. Turn a Linear issue into an isolated checkout
+
+Pick an issue and `lw` creates or reuses a dedicated Git worktree for it:
+
+```sh
+cd "$(lw)"
+```
+
+Worktrees have predictable paths, separate from the repository's main checkout:
+
+```text
+~/.lw/worktrees/<repository>/<ISSUE>
+```
+
+### 2. Find work quickly
+
+The interactive picker searches by issue identifier, team, or text. `Tab` switches between
+issues, projects, and teams, while `Ctrl+P` pins a project or team for faster access. To bypass
+the picker, provide an issue directly:
+
+```sh
+cd "$(lw --issue TEAM-123 --branch alex/team-123-fix)"
+```
+
+### 3. Use each repository's branch convention
+
+Before creating a branch, `lw` fetches origin and looks for local or remote branches that
+already contain the ticket identifier. It reuses one clear match, asks when several match,
+and otherwise offers Linear's suggested branch name as editable text. The worktree directory
+stays `TEAM-123` even when the branch is `alex/team-123-fix`.
+
+### 4. Route issues to the right repository
+
+`lw` remembers the repository selected for a Linear project. For issues without a project, it
+can remember a team-level association instead. An explicit repository always takes precedence:
+
+```sh
+cd "$(lw --issue TEAM-123 --repo ~/src/api --branch alex/team-123-fix)"
+```
+
+### 5. Compose with shells and other tools
+
+On success, `lw` prints exactly one path on stdout. Pickers, progress, warnings, and errors go to
+stderr, so command substitution remains predictable and scripts can consume the result safely.
+
+### 6. Carry ticket context into the worktree
+
+Every worktree stores small local metadata for its issue. Read it without another Linear request,
+or add a local summary when the focus changes:
+
+```sh
+lw context
+lw context --json
+lw summary "investigate the repository discovery failure"
+```
+
+These commands update local context only; they never write to Linear.
+
+### 7. Clean up worktrees safely
+
+Cleanup is a two-step operation. First inspect worktrees whose branches are merged or gone, then
+remove them explicitly:
+
+```sh
+lw prune
+lw prune --yes
+```
+
+Dirty worktrees are not force-removed. Automatic pruning is opt-in.
+
+### 8. Keep credentials and data local
+
+`lw` uses a read-only Linear personal API key and prefers the operating system's credential
+store. It has no hosted service or telemetry and never writes to Linear. Run `lw doctor` to check
+Git, credentials, configuration, and worktree storage without creating a worktree.
+
 ## Quick start
 
 Install the latest release on macOS or Linux:
@@ -112,8 +190,8 @@ Run `lw` for interactive search or pass an exact issue:
 
 ```sh
 cd "$(lw)"
-cd "$(lw --issue DEMO-4009)"
-cd "$(lw --issue DEMO-4009 --repo ~/Work/api)"
+cd "$(lw --issue DEMO-4009 --branch alex/demo-4009-fix)"
+cd "$(lw --issue DEMO-4009 --repo ~/Work/api --branch alex/demo-4009-fix)"
 ```
 
 Search behavior:
@@ -130,12 +208,21 @@ Search behavior:
 Repository routing remembers the repository selected for a project. Projectless issues use a
 team-level association. An explicit `--repo` always wins.
 
+After choosing the repository, `lw` fetches origin and searches local and remote branches for
+the ticket identifier. One match is reused; several open a branch picker. With no match, the
+interactive flow lets you edit Linear's suggested name. Direct `--issue` mode requires
+`--branch` before creating a branch unless that repository has a configured template:
+
+```sh
+lw --issue DEMO-4009 --branch alex/demo-4009-fix
+```
+
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `lw` | select an issue and create or reuse its worktree |
-| `lw --issue TEAM-123` | skip the issue picker |
+| `lw --issue TEAM-123 --branch <name>` | skip the issue picker and name a new branch |
 | `lw doctor` | inspect Git, credentials, configuration, and worktree storage |
 | `lw context [--json]` | print this worktree's issue context |
 | `lw summary <text>` | record how the work has changed from the issue title |
@@ -181,9 +268,22 @@ directory. A minimal example:
   "worktreeRoot": "~/.lw/worktrees",
   "credentialCommand": "op read op://private/linear/api-key",
   "repos": { "roots": ["~/Work"] },
+  "branchNaming": {
+    "variables": { "username": "alex" },
+    "byRepository": {
+      "gitlab.example.com/group/api": {
+        "template": "{username}/{ticket_lower}-{slug}"
+      }
+    }
+  },
   "pruneMerged": false
 }
 ```
+
+Branch rules are keyed by the normalized origin (`host/path`). For a local-only repository,
+you can use its absolute checkout path as the key. Templates support `{username}`, `{ticket}`,
+`{ticket_lower}`, `{slug}`, and `{linear_branch}`. They are expanded as data and never run as
+shell commands.
 
 Each created worktree has an `lw.json` in its private Git directory, not in the checkout:
 
@@ -193,12 +293,14 @@ Each created worktree has an `lw.json` in its private Git directory, not in the 
   "title": "Improve command completion output",
   "url": "https://linear.app/acme/issue/ENG-3971",
   "team": "ENG",
+  "branch": "alex/eng-3971-fix",
   "summary": ""
 }
 ```
 
 `lw` has no telemetry or hosted service. Network requests go to Linear's documented GraphQL
-endpoint and, during installation, GitHub. Git children do not inherit `LINEAR_API_KEY`.
+endpoint, the selected repository's `origin` during branch resolution, and GitHub during
+installation. Git children do not inherit `LINEAR_API_KEY`.
 
 ## Documentation
 

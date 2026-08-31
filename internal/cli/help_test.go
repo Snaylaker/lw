@@ -9,6 +9,7 @@ import (
 // a usage error points at a page that does not mention what the user wanted.
 func TestHelpTextListsEveryCommand(t *testing.T) {
 	for _, literal := range []string{
+		"lw run [flags] -- <command> [args...]",
 		"lw doctor",
 		"lw context [--json]",
 		"lw summary <text>",
@@ -50,6 +51,14 @@ func TestHelpTextExplainsCredentialOnboardingAndAdvancedSources(t *testing.T) {
 	}
 	if strings.Contains(HelpText(), "lw auth") {
 		t.Error("there is no lw auth command")
+	}
+}
+
+func TestHelpTextExplainsDirectAgentLaunching(t *testing.T) {
+	for _, literal := range []string{"lw run -- claude", "without a shell", "LINEAR_API_KEY is removed"} {
+		if !strings.Contains(HelpText(), literal) {
+			t.Errorf("help text is missing %q", literal)
+		}
 	}
 }
 

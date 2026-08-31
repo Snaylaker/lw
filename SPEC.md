@@ -27,7 +27,7 @@ only required executable is `git`.
 | `lw prune --auto` / `--no-auto` | persist automatic pruning behavior |
 | `lw logout` | remove the credential saved by onboarding |
 
-Run flags: `--repo <path>`, `--issue <IDENT>`, `--version`, `--help`.
+Run flags: `--repo <path>`, `--issue <IDENT>`, `--branch <name>`, `--version`, `--help`.
 
 Exit codes: `0` success · `1` error · `2` usage · `130` cancelled.
 
@@ -35,7 +35,7 @@ Exit codes: `0` success · `1` error · `2` usage · `130` cancelled.
 
 ```text
 inspect cwd/--repo → conditional onboarding → issue search
-  → remembered/selected repository → worktree → stdout path
+  → remembered/selected repository → resolve branch → worktree → stdout path
 ```
 
 1. Validate an explicit `--repo` and verify Git can run.
@@ -43,8 +43,10 @@ inspect cwd/--repo → conditional onboarding → issue search
 3. If repository roots are missing, ask for the parent folder containing repositories.
 4. Without `--issue`, open workspace-wide issue search; `Tab` cycles optional project and team browsers.
 5. Resolve or select the source repository.
-6. Create/reuse the worktree and write metadata.
-7. End the TUI and print exactly one path line to stdout.
+6. Fetch and resolve the ticket branch; ask only when the result is ambiguous or a new
+   branch needs an editable name.
+7. Create/reuse the worktree and write metadata.
+8. End the TUI and print exactly one path line to stdout.
 
 `--issue` bypasses every picker. An explicit/current repository wins; outside Git, a valid
 remembered project/team association may supply it. Without either, report the standard
@@ -80,7 +82,7 @@ GraphQL:
 ```graphql
 query SearchIssues($term: String!, $first: Int!, $after: String, $filter: IssueFilter) {
   searchIssues(term: $term, first: $first, after: $after, filter: $filter, includeArchived: false) {
-    nodes { id identifier title url state { name type } team { id key name } project { id name } }
+    nodes { id identifier title url branchName state { name type } team { id key name } project { id name } }
     pageInfo { hasNextPage endCursor }
   }
 }
@@ -119,14 +121,29 @@ the picker. Explicit selections update recents and the applicable association at
 Repository root discovery scans exactly one level. A linked worktree resolves to its main
 checkout. An unborn repository fails with `<name> has no commits yet`.
 
-## 6. Worktrees
+## 6. Branches and worktrees
 
-Path: `<worktreeRoot>/<repo name>/<IDENTIFIER>`, default `~/.lw/worktrees`.
-Branch: the issue identifier exactly.
+The worktree identity and Git branch are separate:
+
+- Path: `<worktreeRoot>/<repo name>/<IDENTIFIER>`, default `~/.lw/worktrees`.
+- Branch: resolved from repository refs, `--branch`, or that repository's template.
+
+Before creating anything, `lw` fetches `origin` when present and searches local and
+`origin/*` refs for the issue identifier, case-insensitively and at non-alphanumeric
+boundaries. One match is reused. Several matches open a branch picker. With no match, an
+interactive run opens an editable input prefilled from Linear's `branchName` suggestion.
+
+`--branch` takes precedence over matching refs. In direct `--issue` mode, creating a branch
+requires either `--branch` or a matching repository template; it never silently falls back
+to the bare issue identifier. Names are checked with `git check-ref-format --branch`.
+
+A remote-only match becomes a local tracking branch. A new branch starts from the fetched
+`origin/HEAD`, then `origin/main` or `origin/master`; a repository without an origin falls
+back to its local `HEAD`.
 
 - Existing registered issue worktree: reuse it.
-- Existing issue branch without a worktree: check it out.
-- Missing branch: create it with `git worktree add -b`.
+- Existing resolved branch without a worktree: check it out.
+- Missing branch: create it with `git worktree add -b` from the resolved base.
 - Stale registration: prune and retry once.
 - Occupied non-worktree path: fail without deleting it.
 
@@ -139,6 +156,7 @@ Metadata is atomically written mode `0600` to the worktree's private Git directo
   "title": "Improve workspace startup prompt",
   "url": "https://linear.app/acme/issue/DEMO-4009",
   "team": "DEMO",
+  "branch": "alex/demo-4009-fix",
   "summary": ""
 }
 ```
@@ -179,6 +197,12 @@ Credential helpers and Git children receive an environment without `LINEAR_API_K
     "projects": ["project-uuid"],
     "teams": ["team-uuid"]
   },
+  "branchNaming": {
+    "variables": {"username": "alex"},
+    "byRepository": {
+      "gitlab.example.com/group/api": {"template": "{username}/{ticket_lower}-{slug}"}
+    }
+  },
   "pruneMerged": false
 }
 ```
@@ -186,6 +210,12 @@ Credential helpers and Git children receive an environment without `LINEAR_API_K
 Config is hand-editable, atomically written, directory `0700`, file `0600`. A malformed
 file is an error; malformed entries inside valid JSON are dropped. Preferences are durable
 and are not Linear list caches.
+
+Branch rules are repository-scoped. The preferred key is origin normalized to `host/path`;
+an absolute checkout path is also accepted for a repository without a usable origin.
+Supported placeholders are `{username}`, `{ticket}`, `{ticket_lower}`, `{slug}`, and
+`{linear_branch}`. Missing values and unknown placeholders are errors. Templates are data
+expanded by `lw`; they are never executed as shell commands.
 
 ## 9. TUI keys
 

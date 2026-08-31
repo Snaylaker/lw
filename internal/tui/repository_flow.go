@@ -35,7 +35,7 @@ func (m *Launcher) chooseRepo(repo domain.Repo) tea.Cmd {
 	safelyRecordRepo(m.deps.RecordRepoUse, issue, repo)
 	chosen := repo
 	m.currentRepo = &chosen
-	return m.startFlow(issue)
+	return m.prepareBranch(issue)
 }
 
 func (m *Launcher) chosenRepo() domain.Repo {

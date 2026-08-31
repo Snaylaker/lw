@@ -21,7 +21,7 @@ func (s *flowScreen) View() string {
 	return styleForeground.Render(s.header) + "\n\n" + s.progress.View()
 }
 
-func (m *Launcher) startFlow(issue domain.Issue) tea.Cmd {
+func (m *Launcher) startFlow(issue domain.Issue, branch domain.Branch) tea.Cmd {
 	m.screen = ScreenProgress
 	progress := NewProgressView()
 	m.progress = progress
@@ -40,11 +40,19 @@ func (m *Launcher) startFlow(issue domain.Issue) tea.Cmd {
 	m.flowToken++
 	token := m.flowToken
 	send := m.Send
-	execute := m.deps.ExecuteFlow
+	executeBranch := m.deps.ExecuteBranchFlow
+	executeLegacy := m.deps.ExecuteFlow
 	return func() tea.Msg {
-		result, err := execute(ctx, repo, issue, func(update domain.StageUpdate) {
+		onStage := func(update domain.StageUpdate) {
 			send(stageMsg{token: token, update: update})
-		})
+		}
+		var result domain.FlowResult
+		var err error
+		if executeBranch != nil {
+			result, err = executeBranch(ctx, repo, issue, branch, onStage)
+		} else {
+			result, err = executeLegacy(ctx, repo, issue, onStage)
+		}
 		return flowFinishedMsg{token: token, result: result, err: err}
 	}
 }

@@ -1,5 +1,5 @@
-// Command lw picks a Linear issue, opens a git worktree for it, and prints the
-// worktree path on stdout.
+// Command lw picks a Linear issue and opens a git worktree. Plain lw prints
+// the path; lw run starts an explicit command inside it.
 package main
 
 import (

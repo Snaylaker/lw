@@ -9,7 +9,7 @@ agent, plugin host, or forge API.
 
 ```text
 inspect cwd/--repo → onboarding (only missing key/folder) → issue search
-  → remembered or selected repository → create/reuse worktree → print path
+  → remembered or selected repository → resolve branch → create/reuse worktree → print path
 ```
 
 Plain `lw` opens one workspace-wide search input:
@@ -37,7 +37,7 @@ The terminal UI ends when the worktree exists, and then the path is printed:
 
 ```sh
 cd "$(lw)"
-cd "$(lw --issue DEMO-4009)"
+cd "$(lw --issue DEMO-4009 --branch alex/demo-4009-fix)"
 ```
 
 **stdout contains exactly one line: the worktree path.** Bubble Tea and Lip Gloss are both
@@ -49,12 +49,13 @@ bound to stderr, so command substitution captures neither escape codes nor progr
 cmd/lw              the only binary
 internal/domain     shared project, issue, repository, stage and result values
 internal/lwerr      kind + message + next action
-internal/config     config.json, durable repository routing, atomic writes
+internal/config     config.json, repository routing and branch rules, atomic writes
 internal/credential resolves, saves and removes the Linear key through a vault boundary
 internal/linear     GraphQL transport, exact/team/text search and project/team browsing
 internal/gitrepo    repository validation and one-level discovery
+internal/branch     ref discovery, template expansion and branch planning
 internal/worktree   creation, reuse, metadata and pruning
-internal/tui        onboarding, issue/project/team views, repository picker and progress
+internal/tui        onboarding, issue/project/team/repository/branch views and progress
 internal/doctor     environment checks
 internal/cli        parsing, dispatch and orchestration
 ```
@@ -101,8 +102,14 @@ without a project. Repository roots are scanned exactly one level deep.
 ## Worktrees
 
 A worktree lives at `<worktreeRoot>/<repo name>/<IDENTIFIER>`, default
-`~/.lw/worktrees`. The branch is the issue identifier. Re-selecting an issue reuses the
-existing worktree.
+`~/.lw/worktrees`. Its directory keeps the stable issue identifier while its Git branch
+follows the repository's convention.
+
+After repository selection, `internal/branch` fetches origin, searches local and remote refs
+for the ticket, validates names with Git, and returns a plan. One existing match is automatic;
+several open a picker. With no match, interactive mode edits Linear's suggestion while direct
+mode requires `--branch` or a repository template. New branches start from the fetched remote
+default branch. Re-selecting an issue reuses its existing worktree.
 
 Metadata lives in the linked worktree's private Git directory as `lw.json`, never in the
 checkout:
@@ -113,6 +120,7 @@ checkout:
   "title": "Improve workspace startup prompt",
   "url": "https://linear.app/acme/issue/DEMO-4009",
   "team": "DEMO",
+  "branch": "alex/demo-4009-fix",
   "summary": ""
 }
 ```

@@ -51,6 +51,7 @@ func TestRunRoutesToTheCommand(t *testing.T) {
 	}{
 		{"run", nil, commandRun, Options{}},
 		{"run with flags", []string{"--repo", "/src", "--issue", "ENG-3971"}, commandRun, Options{Repo: "/src", Issue: "ENG-3971"}},
+		{"launch", []string{"run", "--", "claude", "--model", "sonnet"}, commandLaunch, Options{Command: "run", Args: []string{"claude", "--model", "sonnet"}}},
 		{"doctor", []string{"doctor"}, commandDoctor, Options{Command: "doctor"}},
 		{"context", []string{"context", "--json"}, commandContext, Options{Command: "context", JSON: true}},
 		{"summary", []string{"summary", "narrowed it down"}, commandSummary, Options{Command: "summary", Args: []string{"narrowed it down"}}},
@@ -113,11 +114,11 @@ func TestRunFillsInEveryDefault(t *testing.T) {
 	if captured.dir != dir {
 		t.Errorf("dir = %q, want %q", captured.dir, dir)
 	}
-	if captured.stdout != &stdout || captured.stderr != &stderr {
+	if captured.stdin == nil || captured.stdout != &stdout || captured.stderr != &stderr {
 		t.Error("streams were not carried through")
 	}
 	if captured.run == nil || captured.http == nil ||
-		captured.now == nil || captured.launch == nil {
+		captured.now == nil || captured.launch == nil || captured.child == nil {
 		t.Errorf("a dependency was left nil: %+v", captured)
 	}
 }

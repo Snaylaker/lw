@@ -48,7 +48,7 @@ query Teams($first: Int!, $after: String) {
 const IssuesQuery = `
 query Issues($first: Int!, $after: String, $filter: IssueFilter) {
   issues(first: $first, after: $after, filter: $filter) {
-    nodes { id identifier title url state { name type } team { id key name } project { id name } }
+    nodes { id identifier title url branchName state { name type } team { id key name } project { id name } }
     pageInfo { hasNextPage endCursor }
   }
 }`
@@ -58,7 +58,7 @@ query Issues($first: Int!, $after: String, $filter: IssueFilter) {
 const SearchIssuesQuery = `
 query SearchIssues($term: String!, $first: Int!, $after: String, $filter: IssueFilter) {
   searchIssues(term: $term, first: $first, after: $after, filter: $filter, includeArchived: false) {
-    nodes { id identifier title url state { name type } team { id key name } project { id name } }
+    nodes { id identifier title url branchName state { name type } team { id key name } project { id name } }
     pageInfo { hasNextPage endCursor }
   }
 }`
@@ -174,6 +174,7 @@ type issueNode struct {
 	Identifier string `json:"identifier"`
 	Title      string `json:"title"`
 	URL        string `json:"url"`
+	BranchName string `json:"branchName"`
 	State      *struct {
 		Name string `json:"name"`
 		Type string `json:"type"`
@@ -275,10 +276,11 @@ func toTeams(nodes []teamNode) []domain.Team {
 
 func toIssue(node issueNode) domain.Issue {
 	item := domain.Issue{
-		ID:         node.ID,
-		Identifier: node.Identifier,
-		Title:      node.Title,
-		URL:        node.URL,
+		ID:              node.ID,
+		Identifier:      node.Identifier,
+		Title:           node.Title,
+		URL:             node.URL,
+		SuggestedBranch: node.BranchName,
 	}
 	if node.State != nil {
 		item.StateType = node.State.Type

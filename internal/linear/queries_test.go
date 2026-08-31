@@ -128,14 +128,14 @@ func TestQueriesAreVerbatim(t *testing.T) {
 	}
 	wantIssues := "\nquery Issues($first: Int!, $after: String, $filter: IssueFilter) {\n" +
 		"  issues(first: $first, after: $after, filter: $filter) {\n" +
-		"    nodes { id identifier title url state { name type } team { id key name } project { id name } }\n" +
+		"    nodes { id identifier title url branchName state { name type } team { id key name } project { id name } }\n" +
 		"    pageInfo { hasNextPage endCursor }\n  }\n}"
 	if IssuesQuery != wantIssues {
 		t.Errorf("IssuesQuery = %q, want %q", IssuesQuery, wantIssues)
 	}
 	wantSearch := "\nquery SearchIssues($term: String!, $first: Int!, $after: String, $filter: IssueFilter) {\n" +
 		"  searchIssues(term: $term, first: $first, after: $after, filter: $filter, includeArchived: false) {\n" +
-		"    nodes { id identifier title url state { name type } team { id key name } project { id name } }\n" +
+		"    nodes { id identifier title url branchName state { name type } team { id key name } project { id name } }\n" +
 		"    pageInfo { hasNextPage endCursor }\n  }\n}"
 	if SearchIssuesQuery != wantSearch {
 		t.Errorf("SearchIssuesQuery = %q, want %q", SearchIssuesQuery, wantSearch)
@@ -229,7 +229,9 @@ func TestAbortsMapToCancelled(t *testing.T) {
 }
 
 func TestResolveIssueQueriesByTeamKeyAndNumber(t *testing.T) {
-	raw := &fakeRaw{pages: []string{issuePage([]string{issueNodeJSON("ENG-3971", "Fix it", "ENG")}, false, "")}}
+	node := strings.Replace(issueNodeJSON("ENG-3971", "Fix it", "ENG"),
+		`,"state"`, `,"branchName":"alex/eng-3971-fix-it","state"`, 1)
+	raw := &fakeRaw{pages: []string{issuePage([]string{node}, false, "")}}
 	item, err := ResolveIssue(context.Background(), ResolveIssueRequest{
 		Credential: testCredential, Identifier: "ENG-3971", RawRequest: raw.fn,
 	})
@@ -246,8 +248,8 @@ func TestResolveIssueQueriesByTeamKeyAndNumber(t *testing.T) {
 	if raw.calls[0].variables.First != 1 || raw.calls[0].variables.After != nil {
 		t.Errorf("variables = %+v, want first 1 and a null cursor", raw.calls[0].variables)
 	}
-	if item.Identifier != "ENG-3971" {
-		t.Errorf("identifier = %q", item.Identifier)
+	if item.Identifier != "ENG-3971" || item.SuggestedBranch != "alex/eng-3971-fix-it" {
+		t.Errorf("issue = %+v", item)
 	}
 }
 

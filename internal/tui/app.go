@@ -45,8 +45,16 @@ type LauncherDeps struct {
 	RepoForIssue      func(domain.Issue) (domain.Repo, bool)
 	RecordRepoUse     func(domain.Issue, domain.Repo)
 
-	ExecuteFlow func(context.Context, domain.Repo, domain.Issue, func(domain.StageUpdate)) (domain.FlowResult, error)
-	DoneClose   time.Duration
+	// ResolveBranch runs after issue and repository selection. ChooseBranch
+	// validates an edited name without fetching a second time.
+	ResolveBranch func(context.Context, domain.Repo, domain.Issue) (domain.BranchResolution, error)
+	ChooseBranch  func(context.Context, domain.Repo, string) (domain.Branch, error)
+
+	// ExecuteBranchFlow is the branch-aware path. ExecuteFlow remains as a
+	// compatibility seam for embedders and tests that still use identifier names.
+	ExecuteBranchFlow func(context.Context, domain.Repo, domain.Issue, domain.Branch, func(domain.StageUpdate)) (domain.FlowResult, error)
+	ExecuteFlow       func(context.Context, domain.Repo, domain.Issue, func(domain.StageUpdate)) (domain.FlowResult, error)
+	DoneClose         time.Duration
 }
 
 const defaultDoneClose = 700 * time.Millisecond
@@ -68,6 +76,9 @@ const (
 	ScreenProjects        Screen = "projects"
 	ScreenTeams           Screen = "teams"
 	ScreenRepos           Screen = "repos"
+	ScreenBranchLoading   Screen = "branch-loading"
+	ScreenBranches        Screen = "branches"
+	ScreenBranchInput     Screen = "branch-input"
 	ScreenProgress        Screen = "progress"
 	ScreenDone            Screen = "done"
 	ScreenError           Screen = "error"
@@ -146,6 +157,8 @@ type Launcher struct {
 	projectPicker    *ProjectPicker
 	teamPicker       *TeamPicker
 	repoPicker       *RepoPicker
+	branchPicker     *BranchPicker
+	branchInput      *BranchInput
 
 	currentIssue          *domain.Issue
 	currentProject        *domain.Project
@@ -244,6 +257,10 @@ func (m *Launcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.batch(m.onTeamsLoaded(typed))
 	case teamIssuesLoadedMsg:
 		return m, m.batch(m.onTeamIssuesLoaded(typed))
+	case branchResolvedMsg:
+		return m, m.batch(m.onBranchResolved(typed))
+	case branchChosenMsg:
+		return m, m.batch(m.onBranchChosen(typed))
 	case stageMsg:
 		return m, m.batch(m.onStage(typed))
 	case flowFinishedMsg:
@@ -290,6 +307,8 @@ func (m *Launcher) show(next view) {
 	m.projectPicker = nil
 	m.teamPicker = nil
 	m.repoPicker = nil
+	m.branchPicker = nil
+	m.branchInput = nil
 	m.current = next
 	if m.width > 0 {
 		next.SetWidth(m.width)
@@ -437,6 +456,13 @@ func (m *Launcher) onKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 			}
 			m.settle(LauncherOutcome{Cancelled: true})
 		case ScreenRepos:
+			m.abortLoad()
+			m.currentIssue = nil
+			m.currentRepo = nil
+			m.returnToProjectIssues = m.repoIssueProject
+			m.returnToTeamIssues = m.repoIssueTeam
+			return true, m.reopenIssueView()
+		case ScreenBranchLoading, ScreenBranches, ScreenBranchInput:
 			m.abortLoad()
 			m.currentIssue = nil
 			m.currentRepo = nil

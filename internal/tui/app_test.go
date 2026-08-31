@@ -160,6 +160,69 @@ func (h *appHarness) outcome() LauncherOutcome {
 	return h.model.Outcome()
 }
 
+func TestBranchResolutionPromptsForAnAmbiguousExistingBranch(t *testing.T) {
+	var executed string
+	h := newApp(t, func(deps *LauncherDeps, _ *appHarness) {
+		repo := testRepo
+		deps.PreselectRepo = &repo
+		deps.ResolveBranch = func(context.Context, domain.Repo, domain.Issue) (domain.BranchResolution, error) {
+			return domain.BranchResolution{Candidates: []domain.Branch{
+				{Name: "alex/demo-4009-one", ExistingLocal: true},
+				{Name: "alex/demo-4009-two", ExistingRemote: "refs/remotes/origin/alex/demo-4009-two"},
+			}}, nil
+		}
+		deps.ExecuteBranchFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
+			executed = branch.Name
+			return testFlowResult, nil
+		}
+	})
+	h.start()
+	h.search("DEMO")
+	h.press(typedKey(tea.KeyEnter))
+	if h.model.screen != ScreenBranches {
+		t.Fatalf("screen = %q, want branches", h.model.screen)
+	}
+	mustContain(t, h.frame(), "Several existing branches")
+	h.press(typedKey(tea.KeyEnter))
+	if executed != "alex/demo-4009-one" {
+		t.Fatalf("executed branch = %q", executed)
+	}
+}
+
+func TestBranchResolutionOffersAnEditableLinearSuggestion(t *testing.T) {
+	var chosen, executed string
+	h := newApp(t, func(deps *LauncherDeps, _ *appHarness) {
+		repo := testRepo
+		deps.PreselectRepo = &repo
+		deps.ResolveBranch = func(context.Context, domain.Repo, domain.Issue) (domain.BranchResolution, error) {
+			return domain.BranchResolution{Suggested: "linear/demo-4009-suggestion"}, nil
+		}
+		deps.ChooseBranch = func(_ context.Context, _ domain.Repo, name string) (domain.Branch, error) {
+			chosen = name
+			return domain.Branch{Name: name, Base: "origin/main"}, nil
+		}
+		deps.ExecuteBranchFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
+			executed = branch.Name
+			return testFlowResult, nil
+		}
+	})
+	h.start()
+	h.search("DEMO")
+	h.press(typedKey(tea.KeyEnter))
+	if h.model.screen != ScreenBranchInput {
+		t.Fatalf("screen = %q, want branch input", h.model.screen)
+	}
+	mustContain(t, h.frame(), "linear/demo-4009-suggestion")
+	h.press(typedKey(tea.KeyCtrlU))
+	for _, r := range "team/demo-4009-custom" {
+		h.press(runeKey(r))
+	}
+	h.press(typedKey(tea.KeyEnter))
+	if chosen != "team/demo-4009-custom" || executed != chosen {
+		t.Fatalf("chosen = %q, executed = %q", chosen, executed)
+	}
+}
+
 func TestOnboardingContinuesDirectlyToIssueSearch(t *testing.T) {
 	var key, root string
 	h := newApp(t, func(deps *LauncherDeps, _ *appHarness) {

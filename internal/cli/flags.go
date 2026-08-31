@@ -8,10 +8,12 @@ import (
 	"github.com/snaylaker/lw/internal/lwerr"
 )
 
-// The command names, as they appear as the first positional argument. The run
-// is the empty one: `lw` with no command at all.
+// The command names, as they appear as the first positional argument. The
+// path-only flow is the empty one: `lw` with no command at all. `lw run` uses
+// that same flow, then starts an explicit child command in the worktree.
 const (
 	commandRun     = ""
+	commandLaunch  = "run"
 	commandDoctor  = "doctor"
 	commandContext = "context"
 	commandSummary = "summary"
@@ -22,10 +24,11 @@ const (
 // Options is the parsed command line: what to do, and with which flags. It is
 // the only thing a command body reads about the invocation.
 type Options struct {
-	Command string   // "" run, "doctor", "context", "summary", "prune", "logout"
+	Command string   // "" path-only flow, "run", "doctor", "context", "summary", "prune", "logout"
 	Args    []string // remaining positional arguments for the subcommand
 	Repo    string
 	Issue   string
+	Branch  string
 	JSON    bool // context --json
 	// Yes applies `lw prune`. Without it the command only reports, because
 	// deleting a checkout is not undoable.
@@ -53,11 +56,12 @@ func (spec flagSpec) allowedOn(command string) bool {
 	return spec.commands == nil || slices.Contains(spec.commands, command)
 }
 
-var runOnly = []string{commandRun}
+var flowCommands = []string{commandRun, commandLaunch}
 
 var flagSpecs = map[string]flagSpec{
-	"--repo":     {commands: runOnly, apply: func(o *Options, v string) { o.Repo = v }},
-	"--issue":    {commands: runOnly, apply: func(o *Options, v string) { o.Issue = v }},
+	"--repo":     {commands: flowCommands, apply: func(o *Options, v string) { o.Repo = v }},
+	"--issue":    {commands: flowCommands, apply: func(o *Options, v string) { o.Issue = v }},
+	"--branch":   {commands: flowCommands, apply: func(o *Options, v string) { o.Branch = v }},
 	"--json":     {boolean: true, commands: []string{commandContext}, apply: func(o *Options, _ string) { o.JSON = true }},
 	"--yes":      {boolean: true, commands: []string{commandPrune}, apply: func(o *Options, _ string) { o.Yes = true }},
 	"--no-fetch": {boolean: true, commands: []string{commandPrune}, apply: func(o *Options, _ string) { o.NoFetch = true }},
@@ -68,6 +72,7 @@ var flagSpecs = map[string]flagSpec{
 }
 
 var commandNames = []string{
+	commandLaunch,
 	commandDoctor,
 	commandContext,
 	commandSummary,
@@ -148,6 +153,9 @@ func Parse(argv []string) (Options, *lwerr.Error) {
 	// round trip that comes back "no such issue".
 	if opts.Issue != "" && !issueIdentifierRE.MatchString(opts.Issue) {
 		return Options{}, usagef("--issue takes an identifier like ENG-3971, not %q", opts.Issue)
+	}
+	if opts.Command == commandLaunch && len(opts.Args) == 0 && !opts.Help && !opts.Version {
+		return Options{}, usagef("lw run needs a command after --")
 	}
 	return opts, nil
 }

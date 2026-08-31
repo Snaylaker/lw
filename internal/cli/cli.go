@@ -30,6 +30,7 @@ const httpTimeout = 30 * time.Second
 // Deps is every seam the CLI has. A zero value means "the real thing", so
 // production wiring passes almost nothing and a test passes everything.
 type Deps struct {
+	Stdin      io.Reader
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Env        map[string]string // nil means the process environment
@@ -41,12 +42,13 @@ type Deps struct {
 	Vault      credential.Vault  // nil means the system keychain with file fallback
 	Now        func() time.Time
 	Launch     func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) // nil means tui.RunLauncher
+	Child      ChildRunner                                              // nil means a direct child process
 }
 
 // Main is the production entry point: the process's own argv, environment and
 // streams, and nothing else.
 func Main() int {
-	return Run(os.Args[1:], Deps{Stdout: os.Stdout, Stderr: os.Stderr})
+	return Run(os.Args[1:], Deps{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
 }
 
 // Run parses argv — which excludes the program name — and returns the exit
@@ -95,6 +97,7 @@ type commandFunc func(ctx context.Context, opts Options, env *execEnv) int
 // commands is the dispatch table. The empty key is the run: `lw` on its own.
 var commands = map[string]commandFunc{
 	commandRun:     runFlow,
+	commandLaunch:  runLaunch,
 	commandDoctor:  runDoctor,
 	commandContext: runContext,
 	commandSummary: runSummary,
@@ -107,6 +110,7 @@ func dispatch(command string) commandFunc { return commands[command] }
 // execEnv is Deps with every default filled in, so no command body has to know
 // what a nil field meant.
 type execEnv struct {
+	stdin      io.Reader
 	stdout     io.Writer
 	stderr     io.Writer
 	env        map[string]string
@@ -118,10 +122,12 @@ type execEnv struct {
 	vault      credential.Vault
 	now        func() time.Time
 	launch     func(deps tui.LauncherDeps) (tui.LauncherOutcome, error)
+	child      ChildRunner
 }
 
 func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
 	env := &execEnv{
+		stdin:      readerOr(deps.Stdin, os.Stdin),
 		stdout:     writerOr(deps.Stdout, os.Stdout),
 		stderr:     writerOr(deps.Stderr, os.Stderr),
 		env:        deps.Env,
@@ -133,6 +139,7 @@ func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
 		vault:      deps.Vault,
 		now:        deps.Now,
 		launch:     deps.Launch,
+		child:      deps.Child,
 	}
 	if env.env == nil {
 		env.env = config.OSEnv()
@@ -151,6 +158,9 @@ func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
 	}
 	if env.launch == nil {
 		env.launch = tui.RunLauncher
+	}
+	if env.child == nil {
+		env.child = runChild
 	}
 	if env.vault == nil {
 		env.vault = credential.NewVault(env.configPath())
@@ -175,6 +185,13 @@ func (env *execEnv) configPath() string {
 // nowMillis is the clock unit used by durable repository recents.
 func (env *execEnv) nowMillis() int64 { return env.now().UnixMilli() }
 
+func readerOr(value, fallback io.Reader) io.Reader {
+	if value == nil {
+		return fallback
+	}
+	return value
+}
+
 func writerOr(value, fallback io.Writer) io.Writer {
 	if value == nil {
 		return fallback
@@ -182,6 +199,5 @@ func writerOr(value, fallback io.Writer) io.Writer {
 	return value
 }
 
-// The command bodies live one per file: runFlow in run.go, runDoctor in
-// doctor.go, runContext in context.go, runSummary in summary.go, runPrune in
-// prune.go and runLogout in logout.go.
+// The command bodies live by concern: runFlow in run.go, runLaunch in
+// launch.go, then doctor.go, context.go, summary.go, prune.go and logout.go.

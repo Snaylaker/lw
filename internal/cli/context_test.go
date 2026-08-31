@@ -121,8 +121,8 @@ func TestContextJSONPrintsTheMetadataObjectVerbatim(t *testing.T) {
 	if !strings.Contains(onDisk, `"identifier": "ENG-3971"`) {
 		t.Errorf("the metadata file is not what it should be:\n%s", onDisk)
 	}
-	// SPEC §5 lists five fields and §9 says this command prints the metadata
-	// object verbatim, so all five are here — `summary` as "" on a fresh
+	// The spec says this command prints the metadata object verbatim, so every
+	// documented field is here — `summary` as "" on a fresh
 	// worktree, not missing.
 	var fields map[string]any
 	if err := json.Unmarshal([]byte(h.stdout.String()), &fields); err != nil {
@@ -133,10 +133,11 @@ func TestContextJSONPrintsTheMetadataObjectVerbatim(t *testing.T) {
 		"title":      "Improve command completion output",
 		"url":        "https://linear.app/acme/issue/ENG-3971",
 		"team":       "ENG",
+		"branch":     "ENG-3971",
 		"summary":    "",
 	}
 	if len(fields) != len(want) {
-		t.Fatalf("printed %v, want exactly the five fields of SPEC §5", fields)
+		t.Fatalf("printed %v, want exactly the documented fields", fields)
 	}
 	for key, value := range want {
 		if fields[key] != value {

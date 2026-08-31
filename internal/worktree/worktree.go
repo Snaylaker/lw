@@ -18,8 +18,11 @@ type Options struct {
 	// Repo is the source checkout: the worktree is added to it, and its name
 	// groups every worktree cut from it.
 	Repo domain.Repo
-	// Issue names the directory, the branch, and the metadata the worktree carries.
+	// Issue names the directory and the metadata the worktree carries.
 	Issue domain.Issue
+	// Branch is resolved before Open. Empty keeps compatibility for callers that
+	// still want the old identifier-named branch.
+	Branch domain.Branch
 	// Root is the absolute directory holding one subdirectory per repository.
 	Root string
 	// Run is nil for gitrepo.DefaultRunner.
@@ -79,6 +82,11 @@ func Open(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	identifier := opts.Issue.Identifier
+	branch := opts.Branch
+	legacyBranch := branch.Name == ""
+	if legacyBranch {
+		branch.Name = identifier
+	}
 	if err := validIdentifier(identifier); err != nil {
 		return Result{}, err
 	}
@@ -90,9 +98,19 @@ func Open(ctx context.Context, opts Options) (Result, error) {
 		stage(domain.StageUpdate{Stage: domain.StagePreparing, State: domain.StateFailed})
 		return Result{}, cancelledFirst(ctx, err)
 	}
+	if legacyBranch {
+		branch.ExistingLocal, _ = branchExists(ctx, opts.Repo.Root, branch.Name, run)
+	}
 
-	if existing := match(registered, opts.Repo.Root, path, identifier); existing != nil {
+	if existing := match(registered, opts.Repo.Root, path, branch.Name); existing != nil {
 		if !stale(*existing) {
+			if !samePath(existing.Path, path) {
+				metadata, metadataErr := ReadMetadata(ctx, existing.Path, run)
+				if metadataErr != nil || metadata == nil || metadata.Identifier != identifier {
+					stage(domain.StageUpdate{Stage: domain.StagePreparing, State: domain.StateFailed})
+					return Result{}, branchCheckoutConflict(branch.Name, existing.Path)
+				}
+			}
 			// The same directory keeps the spelling this run computed, so the
 			// reported path does not change shape between creating and reusing.
 			reused := existing.Path
@@ -101,14 +119,18 @@ func Open(ctx context.Context, opts Options) (Result, error) {
 			}
 			stage(domain.StageUpdate{Stage: domain.StagePreparing, State: domain.StateDone})
 			stage(domain.StageUpdate{Stage: domain.StageCreatingWorktree, State: domain.StateSkipped, Detail: "already exists"})
-			if err := WriteMetadata(ctx, reused, MetadataOf(opts.Issue), run); err != nil {
+			if err := WriteMetadata(ctx, reused, MetadataOf(opts.Issue, existing.Branch), run); err != nil {
 				return Result{}, cancelledFirst(ctx, err)
 			}
-			return Result{Path: reused, Branch: identifier, Created: false}, nil
+			return Result{Path: reused, Branch: existing.Branch, Created: false}, nil
 		}
 		// A registration git can no longer follow blocks both the path and the
 		// branch, and it is bookkeeping rather than user data: repair it.
 		prune(ctx, opts.Repo.Root, run)
+	}
+	if checkout := branchCheckout(registered, branch.Name); checkout != nil {
+		stage(domain.StageUpdate{Stage: domain.StagePreparing, State: domain.StateFailed})
+		return Result{}, branchCheckoutConflict(branch.Name, checkout.Path)
 	}
 
 	if occupied(path) {
@@ -128,28 +150,33 @@ func Open(ctx context.Context, opts Options) (Result, error) {
 			`set "worktreeRoot" in config.json to a writable directory`,
 		))
 	}
-	if err := add(ctx, opts.Repo.Root, path, identifier, run); err != nil {
+	if err := add(ctx, opts.Repo.Root, path, branch, run); err != nil {
 		stage(domain.StageUpdate{Stage: domain.StageCreatingWorktree, State: domain.StateFailed})
 		return Result{}, cancelledFirst(ctx, err)
 	}
-	if err := WriteMetadata(ctx, path, MetadataOf(opts.Issue), run); err != nil {
+	if err := WriteMetadata(ctx, path, MetadataOf(opts.Issue, branch.Name), run); err != nil {
 		stage(domain.StageUpdate{Stage: domain.StageCreatingWorktree, State: domain.StateFailed})
 		return Result{}, cancelledFirst(ctx, err)
 	}
 	stage(domain.StageUpdate{Stage: domain.StageCreatingWorktree, State: domain.StateDone})
-	return Result{Path: path, Branch: identifier, Created: true}, nil
+	return Result{Path: path, Branch: branch.Name, Created: true}, nil
 }
 
-// add checks out an existing branch of that name and creates one otherwise, so
-// re-opening an issue whose branch outlived its worktree lands back on the work
-// already done. One prune-and-retry covers a registration git knows about but
-// `worktree list` did not flag.
-func add(ctx context.Context, repoRoot, path, identifier string, run gitrepo.Runner) error {
-	args := []string{"worktree", "add", path, identifier}
-	// A git that cannot answer reads as "no branch", which asks for -b and then
-	// fails loudly in git's own words rather than guessing quietly here.
-	if exists, _ := branchExists(ctx, repoRoot, identifier, run); !exists {
-		args = []string{"worktree", "add", "-b", identifier, path}
+// add follows the branch plan produced by the resolver. Remote-only branches
+// become tracking local branches; new branches start from the fetched remote
+// default branch when one exists.
+func add(ctx context.Context, repoRoot, path string, branch domain.Branch, run gitrepo.Runner) error {
+	var args []string
+	switch {
+	case branch.ExistingLocal:
+		args = []string{"worktree", "add", path, branch.Name}
+	case branch.ExistingRemote != "":
+		args = []string{"worktree", "add", "--track", "-b", branch.Name, path, branch.ExistingRemote}
+	default:
+		args = []string{"worktree", "add", "-b", branch.Name, path}
+		if branch.Base != "" {
+			args = append(args, branch.Base)
+		}
 	}
 	result, err := run(ctx, repoRoot, "git", args)
 	if err == nil && result.ExitCode == 0 {
@@ -247,14 +274,27 @@ func parseList(output string) []registration {
 	return registrations
 }
 
-// match prefers the worktree at the path this run would use, and falls back to
-// whichever worktree holds the branch: git refuses to check a branch out twice,
-// and a second checkout of the same issue is what the tool exists to avoid.
-//
-// The main checkout is never a candidate. The user standing on the issue's
-// branch in their own repository must not have it handed back as the worktree,
-// .
-func match(registrations []registration, repoRoot, path, identifier string) *registration {
+// branchCheckoutConflict explains the collision before git's less focused
+// worktree-add error does.
+func branchCheckoutConflict(branch, path string) *lwerr.Error {
+	return lwerr.New(lwerr.WorktreeConflict,
+		`branch "`+branch+`" is already checked out at `+path,
+		"choose another branch or remove that worktree")
+}
+
+func branchCheckout(registrations []registration, branch string) *registration {
+	for i := range registrations {
+		if !registrations[i].Bare && !stale(registrations[i]) && registrations[i].Branch == branch {
+			return &registrations[i]
+		}
+	}
+	return nil
+}
+
+// match prefers the stable issue path and then an alternate lw worktree holding
+// the selected branch. The caller verifies that an alternate belongs to the
+// same issue. The main checkout is never a reusable candidate.
+func match(registrations []registration, repoRoot, path, branch string) *registration {
 	candidates := make([]*registration, 0, len(registrations))
 	for i := range registrations {
 		if registrations[i].Bare || samePath(registrations[i].Path, repoRoot) {
@@ -268,7 +308,7 @@ func match(registrations []registration, repoRoot, path, identifier string) *reg
 		}
 	}
 	for _, candidate := range candidates {
-		if candidate.Branch == identifier {
+		if candidate.Branch == branch {
 			return candidate
 		}
 	}

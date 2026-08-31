@@ -18,19 +18,41 @@ type Team struct {
 }
 
 // Issue is one Linear issue. The identifier ("ENG-3971") names the worktree
-// directory and its branch.
+// directory. SuggestedBranch is Linear's editable branch-name suggestion; the
+// repository's actual branch is resolved separately.
 type Issue struct {
-	ID          string
-	Identifier  string
-	Title       string
-	URL         string
-	StateType   string // triage | backlog | unstarted | started | completed | canceled
-	StateName   string
-	TeamID      string
-	TeamKey     string
-	TeamName    string
-	ProjectID   string // empty when the issue has no project
-	ProjectName string
+	ID              string
+	Identifier      string
+	Title           string
+	URL             string
+	StateType       string // triage | backlog | unstarted | started | completed | canceled
+	StateName       string
+	TeamID          string
+	TeamKey         string
+	TeamName        string
+	ProjectID       string // empty when the issue has no project
+	ProjectName     string
+	SuggestedBranch string
+}
+
+// Branch is the git branch selected for an issue. ExistingLocal means it can be
+// checked out directly. ExistingRemote names a remote-tracking ref from which
+// lw must create the local branch. A new branch has neither and starts at Base.
+type Branch struct {
+	Name           string
+	ExistingLocal  bool
+	ExistingRemote string
+	Base           string
+}
+
+// BranchResolution is the result of inspecting one repository. Selected is set
+// for an explicit name, a configured template, or one unambiguous existing
+// match. Multiple existing matches are Candidates. With no match, Suggested is
+// the editable value shown by the interactive launcher.
+type BranchResolution struct {
+	Selected   *Branch
+	Candidates []Branch
+	Suggested  string
 }
 
 // Repo is a validated git checkout.

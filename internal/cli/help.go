@@ -10,30 +10,40 @@ var Version = "dev"
 // helpText lists every command and every flag. It is printed by --help, and
 // again after the message of any usage error, so a wrong invocation always ends
 // looking at the right one.
-const helpText = `lw — pick a Linear issue, get a git worktree for it.
+const helpText = `lw — pick a Linear issue and prepare a git worktree.
 
-lw prints the worktree path on stdout and nothing else, so it composes:
+Plain lw prints the worktree path on stdout and nothing else:
 
   cd "$(lw)"                      search issues, then change into the worktree
-  cd "$(lw --issue ENG-3971)"     no UI at all: straight to the worktree
+  cd "$(lw --issue ENG-3971 --branch alex/eng-3971-fix)"
+                                      resolve one issue without the terminal UI
   lw --repo ~/src/api             search issues for this repository
 
-Everything else — the pickers, progress, warnings, errors — goes to stderr.
-What you do in the worktree is up to you: lw starts no editor, shell or agent.
+Use lw run to start an explicit command after creating or reusing the worktree:
+
+  lw run -- claude
+  lw run -- codex --full-auto
+  lw run -- cursor .
+
+The command runs directly, without a shell, in the worktree. It owns stdin,
+stdout, stderr and its exit code. LINEAR_API_KEY is removed from its environment.
 
 Usage:
-  lw [flags]                      interactive issue search, repository, then the path
-  lw doctor                       check the environment
-  lw context [--json]             print this worktree's ticket context
-  lw summary <text>               record what the work is now about
-  lw prune [--yes] [--no-fetch]   remove worktrees whose branch is merged or gone
-  lw logout                       remove the key saved during onboarding
+  lw [flags]                              issue, repository, then path on stdout
+  lw run [flags] -- <command> [args...]   issue, repository, then run the command
+  lw doctor                               check the environment
+  lw context [--json]                     print this worktree's ticket context
+  lw summary <text>                       record what the work is now about
+  lw prune [--yes] [--no-fetch]           remove merged or gone worktrees
+  lw logout                               remove the key saved during onboarding
 
 In interactive search, Tab cycles issue/project/team views; Ctrl+P pins a project or team.
 
-Run flags:
+Flow flags for lw and lw run:
   --repo <path>           use this repository and skip repository selection
-  --issue <IDENT>         resolve one issue directly — no terminal UI is used
+  --issue <IDENT>         resolve one issue directly; no terminal UI is used
+  --branch <name>         use this branch (required for a new branch in direct mode
+                          unless this repository has a branchNaming template)
 
 lw prune flags:
   --yes                   actually remove; without it prune only reports

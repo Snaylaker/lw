@@ -329,6 +329,45 @@ func TestCredentialCommandReadsAsWrittenAndIsTrimmed(t *testing.T) {
 	}
 }
 
+func TestBranchNamingRulesAreRepositoryScopedAndSanitized(t *testing.T) {
+	path := writeFile(t, filepath.Join(t.TempDir(), "config.json"), `{
+		"branchNaming": {
+			"variables": {"username": "  mehdi  "},
+			"byRepository": {
+				"gitlab.example.com/group/api": {"template": "  {username}/{ticket_lower}-{slug}  "},
+				"broken": 42,
+				"blank": {"template": "   "}
+			}
+		}
+	}`)
+	stored := mustRead(t, path)
+	template, username, ok := BranchRuleFor(stored, "missing", "gitlab.example.com/group/api")
+	if !ok || template != "{username}/{ticket_lower}-{slug}" || username != "mehdi" {
+		t.Fatalf("rule = %q, username = %q, ok = %v", template, username, ok)
+	}
+	if _, _, ok := BranchRuleFor(stored, "broken", "blank"); ok {
+		t.Fatal("invalid branch rules survived sanitization")
+	}
+}
+
+func TestBranchNamingSurvivesOtherConfigWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	stored := &StoredConfig{BranchNaming: &BranchNaming{
+		Variables:    BranchVariables{Username: "mehdi"},
+		ByRepository: map[string]BranchRule{"/src/api": {Template: "{ticket_lower}-{slug}"}},
+	}}
+	if err := Write(stored, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddRepoRoot("~/Work", path); err != nil {
+		t.Fatal(err)
+	}
+	template, username, ok := BranchRuleFor(mustRead(t, path), "/src/api")
+	if !ok || template != "{ticket_lower}-{slug}" || username != "mehdi" {
+		t.Fatalf("rule lost after write: %q, %q, %v", template, username, ok)
+	}
+}
+
 func TestPinsAreSanitizedAndReturnedAsCopies(t *testing.T) {
 	path := writeFile(t, filepath.Join(t.TempDir(), "config.json"), `{
 		"pins": {

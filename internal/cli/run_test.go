@@ -488,7 +488,7 @@ func TestRunIssueFlagResolvesTheIssueDirectlyAndSkipsBothPickers(t *testing.T) {
 	h.writeConfig(map[string]any{})
 	h.http.response = issueResponse
 
-	code := h.run("--issue", "ENG-3971")
+	code := h.run("--issue", "ENG-3971", "--branch", "ENG-3971")
 
 	if code != 0 {
 		t.Fatalf("code = %d (stderr %q)", code, h.stderr.String())
@@ -505,6 +505,55 @@ func TestRunIssueFlagResolvesTheIssueDirectlyAndSkipsBothPickers(t *testing.T) {
 	}
 	if metadata.Title != "Improve command completion output" {
 		t.Errorf("metadata = %+v", metadata)
+	}
+}
+
+func TestDirectModeRequiresANameBeforeCreatingANewBranch(t *testing.T) {
+	h := newHarness(t).withKey("lin_api_key")
+	h.writeConfig(map[string]any{})
+	h.http.response = issueResponse
+
+	if code := h.run("--issue", "ENG-3971"); code != 1 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	want := "error: no existing branch matches ENG-3971\n" +
+		"next: re-run with --branch <name>, or configure branchNaming for this repository\n"
+	if h.stderr.String() != want {
+		t.Fatalf("stderr = %q, want %q", h.stderr.String(), want)
+	}
+}
+
+func TestDirectModeExpandsARepositoryBranchTemplate(t *testing.T) {
+	h := newHarness(t).withKey("lin_api_key")
+	h.writeConfig(map[string]any{
+		"branchNaming": map[string]any{
+			"variables": map[string]any{"username": "mehdi"},
+			"byRepository": map[string]any{
+				h.repo: map[string]any{"template": "{username}/{ticket_lower}-{slug}"},
+			},
+		},
+	})
+	h.http.response = issueResponse
+
+	if code := h.run("--issue", "ENG-3971"); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if got := git(t, h.worktreeFor("ENG-3971"), "rev-parse", "--abbrev-ref", "HEAD"); got != "mehdi/eng-3971-improve-command-completion-output" {
+		t.Fatalf("branch = %q", got)
+	}
+}
+
+func TestDirectModeReusesOneMatchingExistingBranch(t *testing.T) {
+	h := newHarness(t).withKey("lin_api_key")
+	h.writeConfig(map[string]any{})
+	h.http.response = issueResponse
+	git(t, h.repo, "branch", "mehdi/eng-3971-started")
+
+	if code := h.run("--issue", "ENG-3971"); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if got := git(t, h.worktreeFor("ENG-3971"), "rev-parse", "--abbrev-ref", "HEAD"); got != "mehdi/eng-3971-started" {
+		t.Fatalf("branch = %q", got)
 	}
 }
 
@@ -543,7 +592,7 @@ func TestRunIssueFlagInfersARepositoryOutsideGit(t *testing.T) {
 			h.writeConfig(map[string]any{"repos": tc.repos})
 			h.http.response = tc.response
 
-			if code := h.run("--issue", "ENG-3971"); code != 0 {
+			if code := h.run("--issue", "ENG-3971", "--branch", "ENG-3971"); code != 0 {
 				t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
 			}
 			if h.stdout.String() != h.worktreeFor("ENG-3971")+"\n" {

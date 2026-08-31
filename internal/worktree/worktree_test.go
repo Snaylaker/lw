@@ -150,6 +150,70 @@ func TestOpenCreatesTheBranchAndTheCheckout(t *testing.T) {
 	}
 }
 
+func TestOpenKeepsIssueDirectorySeparateFromResolvedBranch(t *testing.T) {
+	repo := newRepo(t)
+	root := t.TempDir()
+	selected := domain.Branch{Name: "mehdi/eng-1-fix-count", Base: "HEAD"}
+	result, err := Open(context.Background(), Options{
+		Repo: repo, Issue: issue("ENG-1"), Branch: selected, Root: root,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if result.Path != Path(root, repo.Name, "ENG-1") {
+		t.Fatalf("path = %q", result.Path)
+	}
+	if branch := git(t, result.Path, "rev-parse", "--abbrev-ref", "HEAD"); branch != selected.Name {
+		t.Fatalf("branch = %q", branch)
+	}
+	metadata, err := ReadMetadata(context.Background(), result.Path, nil)
+	if err != nil || metadata == nil || metadata.Branch != selected.Name {
+		t.Fatalf("metadata = %+v, err = %v", metadata, err)
+	}
+	if removed, err := PruneOrphanedMetadata(context.Background(), result.Path, nil); err != nil || removed {
+		t.Fatalf("live custom branch metadata was pruned: removed=%v err=%v", removed, err)
+	}
+}
+
+func TestOpenCreatesALocalTrackingBranchFromRemote(t *testing.T) {
+	repo := newRepo(t)
+	root := t.TempDir()
+	git(t, repo.Root, "remote", "add", "origin", ".")
+	git(t, repo.Root, "update-ref", "refs/remotes/origin/alex/eng-2-started", "HEAD")
+	selected := domain.Branch{
+		Name: "alex/eng-2-started", ExistingRemote: "refs/remotes/origin/alex/eng-2-started",
+	}
+	result, err := Open(context.Background(), Options{
+		Repo: repo, Issue: issue("ENG-2"), Branch: selected, Root: root,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if branch := git(t, result.Path, "rev-parse", "--abbrev-ref", "HEAD"); branch != selected.Name {
+		t.Fatalf("branch = %q", branch)
+	}
+	if upstream := git(t, result.Path, "rev-parse", "--abbrev-ref", "@{upstream}"); upstream != "origin/alex/eng-2-started" {
+		t.Fatalf("upstream = %q", upstream)
+	}
+}
+
+func TestOpenRejectsABranchCheckedOutForAnotherWorktree(t *testing.T) {
+	repo := newRepo(t)
+	other := filepath.Join(t.TempDir(), "OTHER-1")
+	git(t, repo.Root, "worktree", "add", "-q", "-b", "shared/topic", other)
+
+	_, err := Open(context.Background(), Options{
+		Repo: repo, Issue: issue("ENG-1"), Branch: domain.Branch{Name: "shared/topic", ExistingLocal: true}, Root: t.TempDir(),
+	})
+	if !lwerr.Is(err, lwerr.WorktreeConflict) {
+		t.Fatalf("error = %v, want worktree conflict", err)
+	}
+	conflict, _ := lwerr.As(err)
+	if !strings.Contains(conflict.Message, "already checked out at ") || !strings.Contains(conflict.Message, "OTHER-1") {
+		t.Fatalf("message = %q", conflict.Message)
+	}
+}
+
 func TestOpenReusesAnExistingWorktree(t *testing.T) {
 	repo := newRepo(t)
 	root := t.TempDir()

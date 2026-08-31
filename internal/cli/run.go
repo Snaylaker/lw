@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/snaylaker/lw/internal/branch"
 	"github.com/snaylaker/lw/internal/config"
 	"github.com/snaylaker/lw/internal/credential"
 	"github.com/snaylaker/lw/internal/domain"
 	"github.com/snaylaker/lw/internal/gitrepo"
 	"github.com/snaylaker/lw/internal/linear"
+	"github.com/snaylaker/lw/internal/lwerr"
 	"github.com/snaylaker/lw/internal/tui"
 	"github.com/snaylaker/lw/internal/worktree"
 )
@@ -153,7 +155,15 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 				Status: gitrepo.StatusNotARepo, Dir: f.env.dir,
 			}), f.env.stderr)
 		}
-		result, err := f.execute(ctx, *repo, issue, nil)
+		resolution, err := f.resolveBranch(ctx, *repo, issue)
+		if err != nil {
+			return nil, Report(err, f.env.stderr)
+		}
+		selected, err := requireResolvedBranch(issue, resolution)
+		if err != nil {
+			return nil, Report(err, f.env.stderr)
+		}
+		result, err := f.executeBranch(ctx, *repo, issue, selected, nil)
 		if err != nil {
 			return nil, Report(err, f.env.stderr)
 		}
@@ -183,7 +193,10 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 		RepoForIssue: func(issue domain.Issue) (domain.Repo, bool) {
 			return f.repoForIssue(ctx, issue)
 		},
-		RecordRepoUse: f.recordRepoUse,
+		RecordRepoUse:     f.recordRepoUse,
+		ResolveBranch:     f.resolveBranch,
+		ChooseBranch:      f.chooseBranch,
+		ExecuteBranchFlow: f.executeBranch,
 	}
 	if f.needsCredential {
 		deps.Credential = &tui.CredentialSetup{
@@ -213,6 +226,10 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 // execute is step 4, and the only thing the launcher does that touches disk:
 // create or reuse the worktree. worktree.Open writes the metadata itself.
 func (f *flow) execute(ctx context.Context, repo domain.Repo, issue domain.Issue, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
+	return f.executeBranch(ctx, repo, issue, domain.Branch{Name: issue.Identifier}, onStage)
+}
+
+func (f *flow) executeBranch(ctx context.Context, repo domain.Repo, issue domain.Issue, selected domain.Branch, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
 	// The source repository is only known after the picker. Automatic cleanup
 	// must operate on that choice, never merely on the directory lw started in.
 	pruneMergedIfConfigured(ctx, repo, f.env)
@@ -220,6 +237,7 @@ func (f *flow) execute(ctx context.Context, repo domain.Repo, issue domain.Issue
 	result, err := worktree.Open(ctx, worktree.Options{
 		Repo:    repo,
 		Issue:   issue,
+		Branch:  selected,
 		Root:    config.ResolveWorktreeRoot(f.stored, f.env.env),
 		Run:     f.env.run,
 		OnStage: onStage,
@@ -228,6 +246,37 @@ func (f *flow) execute(ctx context.Context, repo domain.Repo, issue domain.Issue
 		return domain.FlowResult{}, err
 	}
 	return domain.FlowResult{CheckoutPath: result.Path, Created: result.Created}, nil
+}
+
+func (f *flow) resolveBranch(ctx context.Context, repo domain.Repo, issue domain.Issue) (domain.BranchResolution, error) {
+	key := branch.RepositoryKey(ctx, repo, f.env.run)
+	template, username, _ := config.BranchRuleFor(f.stored, key, repo.Root)
+	return branch.Resolve(ctx, branch.Options{
+		Repo: repo, Issue: issue, Explicit: f.opts.Branch,
+		Template: template, Username: username, Run: f.env.run,
+	})
+}
+
+func (f *flow) chooseBranch(ctx context.Context, repo domain.Repo, name string) (domain.Branch, error) {
+	return branch.Choose(ctx, repo, name, f.env.run)
+}
+
+func requireResolvedBranch(issue domain.Issue, resolution domain.BranchResolution) (domain.Branch, error) {
+	if resolution.Selected != nil {
+		return *resolution.Selected, nil
+	}
+	if len(resolution.Candidates) > 1 {
+		names := make([]string, 0, len(resolution.Candidates))
+		for _, candidate := range resolution.Candidates {
+			names = append(names, candidate.Name)
+		}
+		return domain.Branch{}, lwerr.New(lwerr.WorktreeConflict,
+			"several branches match "+issue.Identifier+": "+strings.Join(names, ", "),
+			"re-run with --branch <name>")
+	}
+	return domain.Branch{}, lwerr.New(lwerr.WorktreeConflict,
+		"no existing branch matches "+issue.Identifier,
+		"re-run with --branch <name>, or configure branchNaming for this repository")
 }
 
 // firstRepo is the first of the candidates that is set.

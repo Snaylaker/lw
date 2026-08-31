@@ -25,26 +25,32 @@ const MetadataFileName = "lw.json"
 // surface of this tool. Other programs are expected to read it, so the field
 // names are a published contract: add keys, never rename or remove them.
 //
-// SPEC §5 gives the file's content literally, with all five keys present — so
-// none of them is omitempty. A reader of `summary` gets "" on a fresh worktree,
-// never undefined.
+// The file keeps every key present. A reader of `summary` gets "" on a fresh
+// worktree, never undefined. Branch is stored because it is no longer implied
+// by Identifier.
 type Metadata struct {
 	Identifier string `json:"identifier"`
 	Title      string `json:"title"`
 	URL        string `json:"url"`
 	Team       string `json:"team"`
+	Branch     string `json:"branch"`
 	// Summary is written by nobody at creation time; it is the one field a later
 	// run, or another program, is expected to update.
 	Summary string `json:"summary"`
 }
 
 // MetadataOf is the metadata a freshly created worktree carries.
-func MetadataOf(issue domain.Issue) Metadata {
+func MetadataOf(issue domain.Issue, selectedBranch ...string) Metadata {
+	branch := issue.Identifier
+	if len(selectedBranch) > 0 && selectedBranch[0] != "" {
+		branch = selectedBranch[0]
+	}
 	return Metadata{
 		Identifier: issue.Identifier,
 		Title:      issue.Title,
 		URL:        issue.URL,
 		Team:       issue.TeamKey,
+		Branch:     branch,
 	}
 }
 
@@ -105,7 +111,11 @@ func PruneOrphanedMetadata(ctx context.Context, dir string, run gitrepo.Runner) 
 		return false, nil
 	}
 
-	exists, ok := branchExists(ctx, dir, metadata.Identifier, run)
+	branch := metadata.Branch
+	if branch == "" { // metadata written before branch names became configurable
+		branch = metadata.Identifier
+	}
+	exists, ok := branchExists(ctx, dir, branch, run)
 	if !ok || exists {
 		return false, nil
 	}

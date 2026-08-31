@@ -17,8 +17,12 @@ func TestParseAcceptedInvocations(t *testing.T) {
 		{"no arguments is interactive search", nil, Options{}},
 		{"separate repo", []string{"--repo", "/src/acme-api"}, Options{Repo: "/src/acme-api"}},
 		{"attached repo", []string{"--repo=/src/acme-api"}, Options{Repo: "/src/acme-api"}},
-		{"fully direct", []string{"--repo", "/src/acme-api", "--issue", "DEMO-4009"}, Options{Repo: "/src/acme-api", Issue: "DEMO-4009"}},
+		{"fully direct", []string{"--repo", "/src/acme-api", "--issue", "DEMO-4009", "--branch", "alex/demo-4009-fix"}, Options{Repo: "/src/acme-api", Issue: "DEMO-4009", Branch: "alex/demo-4009-fix"}},
 		{"attached issue", []string{"--issue=DEMO-4009"}, Options{Issue: "DEMO-4009"}},
+		{"launch", []string{"run", "--", "claude"}, Options{Command: "run", Args: []string{"claude"}}},
+		{"launch flags and arguments", []string{"run", "--repo", "/src/acme-api", "--issue", "DEMO-4009", "--", "codex", "--full-auto"}, Options{Command: "run", Repo: "/src/acme-api", Issue: "DEMO-4009", Args: []string{"codex", "--full-auto"}}},
+		{"launch without separator", []string{"run", "claude"}, Options{Command: "run", Args: []string{"claude"}}},
+		{"launch help", []string{"run", "--help"}, Options{Command: "run", Help: true}},
 		{"doctor", []string{"doctor"}, Options{Command: "doctor"}},
 		{"context json", []string{"context", "--json"}, Options{Command: "context", JSON: true}},
 		{"flag before command", []string{"--json", "context"}, Options{Command: "context", JSON: true}},
@@ -60,9 +64,13 @@ func TestParseUsageErrors(t *testing.T) {
 		{[]string{"--repo"}, "--repo needs a value"},
 		{[]string{"--repo", "--help"}, "--repo needs a value"},
 		{[]string{"--repo="}, "--repo needs a value"},
+		{[]string{"--branch"}, "--branch needs a value"},
+		{[]string{"doctor", "--branch", "topic"}, "--branch is not a valid flag for lw doctor"},
 		{[]string{"--json"}, "--json is not a valid flag for lw"},
 		{[]string{"summary", "--json", "text"}, "--json is not a valid flag for lw summary"},
 		{[]string{"doctor", "--repo", "/src"}, "--repo is not a valid flag for lw doctor"},
+		{[]string{"run"}, "lw run needs a command after --"},
+		{[]string{"run", "--repo", "/src"}, "lw run needs a command after --"},
 		{[]string{"--issue", "3971"}, `--issue takes an identifier like ENG-3971, not "3971"`},
 		{[]string{"--issue", "ENG-"}, `--issue takes an identifier like ENG-3971, not "ENG-"`},
 		{[]string{"--issue", "ENG-39a"}, `--issue takes an identifier like ENG-3971, not "ENG-39a"`},
@@ -122,9 +130,13 @@ func TestParseHasNoLoginCommand(t *testing.T) {
 
 func TestParseKnowsEveryCommand(t *testing.T) {
 	for _, name := range commandNames {
-		opts, err := Parse([]string{name})
+		argv := []string{name}
+		if name == commandLaunch {
+			argv = append(argv, "claude")
+		}
+		opts, err := Parse(argv)
 		if err != nil || opts.Command != name {
-			t.Errorf("Parse(%q) = %#v, %v", name, opts, err)
+			t.Errorf("Parse(%q) = %#v, %v", argv, opts, err)
 		}
 	}
 }
