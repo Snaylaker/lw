@@ -18,6 +18,7 @@ type input struct {
 	placeholder string
 	maxLength   int
 	secret      bool
+	selected    bool
 }
 
 func newInput(placeholder string) *input {
@@ -39,9 +40,15 @@ func (i *input) SetValue(value string) {
 	}
 	i.runes = append([]rune(nil), runes...)
 	i.cursor = len(i.runes)
+	i.selected = false
 }
 
 func (i *input) Focus() { i.focused = true }
+
+// SelectAll marks a prefilled value for replacement. The next typed character,
+// paste, Backspace, or Delete replaces the whole value; arrows collapse the
+// selection so the user can make a smaller edit instead.
+func (i *input) SelectAll() { i.selected = len(i.runes) > 0 }
 
 // Update applies one key. Newlines never enter the buffer, from a keystroke or
 // from a paste.
@@ -51,6 +58,9 @@ func (i *input) Update(msg tea.Msg) {
 		return
 	}
 	info := describeKey(key)
+	if i.selected && i.updateSelection(key, info) {
+		return
+	}
 	switch {
 	case info.ctrl:
 		i.handleCtrl(info.name)
@@ -80,6 +90,65 @@ func (i *input) Update(msg tea.Msg) {
 			i.insert(key.Runes)
 		}
 	}
+}
+
+// updateSelection handles keys whose meaning changes while the whole prefilled
+// value is selected. It returns true when the key is fully consumed.
+func (i *input) updateSelection(key tea.KeyMsg, info keyInfo) bool {
+	switch {
+	case info.alt:
+		return true
+	case info.ctrl:
+		switch info.name {
+		case "a":
+			return true
+		case "u", "w", "h", "d", "k":
+			i.clearSelection()
+			return true
+		case "b":
+			i.selected = false
+			i.cursor = 0
+			return true
+		case "e", "f":
+			i.selected = false
+			i.cursor = len(i.runes)
+			return true
+		}
+		return false
+	}
+
+	switch info.name {
+	case "left", "home":
+		i.selected = false
+		i.cursor = 0
+		return true
+	case "right", "end":
+		i.selected = false
+		i.cursor = len(i.runes)
+		return true
+	case "backspace", "delete":
+		i.clearSelection()
+		return true
+	case "space":
+		i.clearSelection()
+		i.insert([]rune{' '})
+		return true
+	case "return", "linefeed", "escape", "tab", "up", "down", "pageup", "pagedown":
+		return false
+	default:
+		if key.Type == tea.KeyRunes {
+			i.clearSelection()
+			i.insert(key.Runes)
+			return true
+		}
+	}
+	return false
+}
+
+func (i *input) clearSelection() {
+	i.runes = nil
+	i.cursor = 0
+	i.selected = false
 }
 
 func (i *input) handleCtrl(name string) {
@@ -183,6 +252,9 @@ func (i *input) View() string {
 	displayed := i.displayRunes()
 	if !i.focused {
 		return focusedText(string(displayed))
+	}
+	if i.selected {
+		return styleCursor.Render(string(displayed))
 	}
 	var b strings.Builder
 	b.WriteString(focusedText(string(displayed[:i.cursor])))

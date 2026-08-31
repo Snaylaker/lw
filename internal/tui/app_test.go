@@ -213,7 +213,7 @@ func TestBranchResolutionOffersAnEditableLinearSuggestion(t *testing.T) {
 		t.Fatalf("screen = %q, want branch input", h.model.screen)
 	}
 	mustContain(t, h.frame(), "linear/demo-4009-suggestion")
-	h.press(typedKey(tea.KeyCtrlU))
+	mustContain(t, h.frame(), "Type to replace it")
 	for _, r := range "team/demo-4009-custom" {
 		h.press(runeKey(r))
 	}

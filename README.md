@@ -210,7 +210,8 @@ team-level association. An explicit `--repo` always wins.
 
 After choosing the repository, `lw` fetches origin and searches local and remote branches for
 the ticket identifier. One match is reused; several open a branch picker. With no match, the
-interactive flow lets you edit Linear's suggested name. Direct `--issue` mode requires
+interactive flow selects Linear's suggested name so typing immediately replaces it; use an
+arrow key first to keep and edit the suggestion. Direct `--issue` mode requires
 `--branch` before creating a branch unless that repository has a configured template:
 
 ```sh

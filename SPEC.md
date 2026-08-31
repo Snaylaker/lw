@@ -132,6 +132,8 @@ Before creating anything, `lw` fetches `origin` when present and searches local 
 `origin/*` refs for the issue identifier, case-insensitively and at non-alphanumeric
 boundaries. One match is reused. Several matches open a branch picker. With no match, an
 interactive run opens an editable input prefilled from Linear's `branchName` suggestion.
+The suggestion starts selected: typing or pasting replaces it, while an arrow key keeps the
+value and begins a smaller edit.
 
 `--branch` takes precedence over matching refs. In direct `--issue` mode, creating a branch
 requires either `--branch` or a matching repository template; it never silently falls back

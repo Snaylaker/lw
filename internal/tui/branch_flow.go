@@ -90,6 +90,7 @@ func NewBranchInput(issue domain.Issue, repo domain.Repo, suggested string, onSu
 	field := newInput("enter a branch name")
 	field.SetValue(suggested)
 	field.Focus()
+	field.SelectAll()
 	return &BranchInput{input: field, issue: issue, repo: repo, onSubmit: onSubmit}
 }
 
@@ -116,8 +117,8 @@ func (p *BranchInput) View() string {
 	lines := []string{
 		styleForeground.Copy().Bold(true).Render("Name the branch for " + p.issue.Identifier),
 		styleMuted.Render("Repo: " + p.repo.Name + " — " + p.repo.Root),
-		styleMuted.Render("Edit Linear's suggestion to match this repository's convention."),
-		styleMuted.Render("Enter continue · Esc back"),
+		styleMuted.Render("Linear's suggestion is selected. Type to replace it, or use ←/→ to edit."),
+		styleMuted.Render("Ctrl+U clear · Enter continue · Esc back"),
 		"",
 		styleFocus.Render("❯ ") + p.input.View(),
 	}
