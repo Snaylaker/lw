@@ -15,3 +15,12 @@ Implemented behavior:
 - Prefill the prompt with Linear's suggested branch name, but keep it editable because it may differ from the actual repository convention.
 - In non-interactive mode, require an explicit branch name or a configured branch-name template before creating a branch.
 - Create new branches from the latest remote default branch rather than the source checkout's current `HEAD`.
+
+## Manage repository branch rules from the CLI
+
+Status: implemented.
+
+- Save a repository rule with `lw branches set-rule`.
+- Inspect it with `lw branches show-rule`.
+- Expand and Git-validate it against a real issue with `lw branches preview`.
+- Remove it with `lw branches unset-rule`.

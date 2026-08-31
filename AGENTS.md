@@ -82,6 +82,15 @@ Force the source repository:
 cd "$(lw --issue TEAM-123 --repo ~/src/api --branch alex/team-123-fix)"
 ```
 
+Manage the current repository's branch rule:
+
+```sh
+lw branches set-rule --username alex '{username}/{ticket}/{slug}'
+lw branches show-rule
+lw branches preview TEAM-123
+lw branches unset-rule
+```
+
 Run an explicit command inside the worktree:
 
 ```sh

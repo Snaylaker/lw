@@ -2,7 +2,7 @@ package cli
 
 // Version is the build stamp printed by --version. Releases override it with
 //
-//	go build -ldflags "-X github.com/snaylaker/lw/internal/cli.Version=v0.1.0"
+//	go build -ldflags "-X github.com/snaylaker/lw/internal/cli.Version=v0.2.0"
 //
 // so a source build is honestly labelled "dev".
 var Version = "dev"
@@ -32,6 +32,10 @@ Usage:
   lw [flags]                              issue, repository, then path on stdout
   lw run [flags] -- <command> [args...]   issue, repository, then run the command
   lw doctor                               check the environment
+  lw branches set-rule [--username <name>] <template>
+  lw branches show-rule
+  lw branches preview <IDENT>
+  lw branches unset-rule
   lw context [--json]                     print this worktree's ticket context
   lw summary <text>                       record what the work is now about
   lw prune [--yes] [--no-fetch]           remove merged or gone worktrees
@@ -39,11 +43,20 @@ Usage:
 
 In interactive search, Tab cycles issue/project/team views; Ctrl+P pins a project or team.
 
-Flow flags for lw and lw run:
-  --repo <path>           use this repository and skip repository selection
+Repository and flow flags:
+  --repo <path>           use this repository; valid for flows and lw branches
   --issue <IDENT>         resolve one issue directly; no terminal UI is used
   --branch <name>         use this branch (required for a new branch in direct mode
                           unless this repository has a branchNaming template)
+
+lw branches:
+  set-rule <template>     save this repository's branch naming template
+  show-rule               show this repository's rule and username
+  preview <IDENT>         expand and Git-validate the rule for a Linear issue
+  unset-rule              remove this repository's rule
+  --username <name>       set the shared explicit {username} template value
+
+Templates support {username}, {ticket}, {ticket_lower}, {slug}, and {linear_branch}.
 
 lw prune flags:
   --yes                   actually remove; without it prune only reports

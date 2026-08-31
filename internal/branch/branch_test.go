@@ -120,6 +120,23 @@ func TestInvalidExplicitBranchIsActionable(t *testing.T) {
 	}
 }
 
+func TestValidateTemplateDoesNotNeedAnIssue(t *testing.T) {
+	for _, template := range []string{
+		"{username}/{ticket}/{slug}",
+		"{linear_branch}",
+		"release/topic",
+	} {
+		if err := ValidateTemplate(template); err != nil {
+			t.Errorf("ValidateTemplate(%q): %v", template, err)
+		}
+	}
+	for _, template := range []string{"", "{owner}/{ticket}", "{Ticket}"} {
+		if err := ValidateTemplate(template); !lwerr.Is(err, lwerr.ConfigInvalid) {
+			t.Errorf("ValidateTemplate(%q) error = %v", template, err)
+		}
+	}
+}
+
 func TestExpandRejectsUnknownAndMissingTemplateVariables(t *testing.T) {
 	if _, err := Expand("{owner}/{ticket}", ticket(), "mehdi"); !lwerr.Is(err, lwerr.ConfigInvalid) {
 		t.Fatalf("unknown placeholder error = %v", err)

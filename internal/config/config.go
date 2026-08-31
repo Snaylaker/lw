@@ -88,6 +88,14 @@ type BranchNaming struct {
 	ByRepository map[string]BranchRule `json:"byRepository,omitempty"`
 }
 
+// BranchRuleUpdate is one atomic repository-rule change. A blank Username
+// preserves the existing global template variable.
+type BranchRuleUpdate struct {
+	Repository string
+	Template   string
+	Username   string
+}
+
 // StoredConfig is the whole file. Every section is optional, and unknown keys
 // are ignored on read and dropped on the next write. No secret is ever stored
 // here: CredentialCommand names a way to *fetch* the key, and the key itself
@@ -173,16 +181,83 @@ func ReadStoredConfig(path string) (*StoredConfig, error) {
 // BranchRuleFor returns the first repository rule matching keys, in caller
 // priority order, plus the explicitly configured username variable.
 func BranchRuleFor(stored *StoredConfig, keys ...string) (template, username string, ok bool) {
+	_, template, username, ok = BranchRuleEntry(stored, keys...)
+	return template, username, ok
+}
+
+// BranchRuleEntry also returns the key that matched, which lets management
+// commands show or remove a path-keyed legacy rule when a remote key is absent.
+func BranchRuleEntry(stored *StoredConfig, keys ...string) (repository, template, username string, ok bool) {
 	if stored == nil || stored.BranchNaming == nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	username = stored.BranchNaming.Variables.Username
 	for _, key := range keys {
 		if rule, found := stored.BranchNaming.ByRepository[key]; found && rule.Template != "" {
-			return rule.Template, username, true
+			return key, rule.Template, username, true
 		}
 	}
-	return "", username, false
+	return "", "", username, false
+}
+
+// SetBranchRule writes one repository rule without disturbing routing, pins,
+// cleanup, or credential preferences. It reports whether anything changed.
+func SetBranchRule(update BranchRuleUpdate, path string) (bool, error) {
+	repository := strings.TrimSpace(update.Repository)
+	template := strings.TrimSpace(update.Template)
+	username := strings.TrimSpace(update.Username)
+	current, err := readOrEmpty(path)
+	if err != nil {
+		return false, err
+	}
+	naming := BranchNaming{ByRepository: map[string]BranchRule{}}
+	if current.BranchNaming != nil {
+		naming = *current.BranchNaming
+		if naming.ByRepository == nil {
+			naming.ByRepository = map[string]BranchRule{}
+		}
+	}
+	changed := naming.ByRepository[repository].Template != template
+	naming.ByRepository[repository] = BranchRule{Template: template}
+	if username != "" && naming.Variables.Username != username {
+		naming.Variables.Username = username
+		changed = true
+	}
+	if !changed {
+		return false, nil
+	}
+	current.BranchNaming = &naming
+	if err := Write(current, path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// UnsetBranchRule removes only the named repository rule. The username is kept
+// because another repository rule may use it later.
+func UnsetBranchRule(repository, path string) (bool, error) {
+	repository = strings.TrimSpace(repository)
+	current, err := readOrEmpty(path)
+	if err != nil {
+		return false, err
+	}
+	if current.BranchNaming == nil {
+		return false, nil
+	}
+	if _, found := current.BranchNaming.ByRepository[repository]; !found {
+		return false, nil
+	}
+	delete(current.BranchNaming.ByRepository, repository)
+	if len(current.BranchNaming.ByRepository) == 0 {
+		current.BranchNaming.ByRepository = nil
+		if current.BranchNaming.Variables.Username == "" {
+			current.BranchNaming = nil
+		}
+	}
+	if err := Write(current, path); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // RepoRoots are the directories the repo picker scans, tilde-expanded and made

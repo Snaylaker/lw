@@ -21,6 +21,7 @@ only required executable is `git`.
 | --- | --- |
 | `lw` | workspace-wide interactive issue search |
 | `lw doctor` | check the environment |
+| `lw branches set-rule/show-rule/preview/unset-rule` | manage one repository's branch rule |
 | `lw context [--json]` | print local worktree metadata |
 | `lw summary <text>` | update the local summary |
 | `lw prune [--yes] [--no-fetch]` | report or remove finished worktrees |
@@ -28,6 +29,7 @@ only required executable is `git`.
 | `lw logout` | remove the credential saved by onboarding |
 
 Run flags: `--repo <path>`, `--issue <IDENT>`, `--branch <name>`, `--version`, `--help`.
+`--repo` also targets `lw branches`; `--username` is valid only with `branches set-rule`.
 
 Exit codes: `0` success · `1` error · `2` usage · `130` cancelled.
 
@@ -218,6 +220,21 @@ an absolute checkout path is also accepted for a repository without a usable ori
 Supported placeholders are `{username}`, `{ticket}`, `{ticket_lower}`, `{slug}`, and
 `{linear_branch}`. Missing values and unknown placeholders are errors. Templates are data
 expanded by `lw`; they are never executed as shell commands.
+
+Rule management is repository-scoped:
+
+```text
+lw branches set-rule [--repo <path>] [--username <name>] <template>
+lw branches show-rule [--repo <path>]
+lw branches preview [--repo <path>] <IDENT>
+lw branches unset-rule [--repo <path>]
+```
+
+`set-rule`, `show-rule`, and `unset-rule` do not contact Linear. `set-rule` validates both
+template syntax and a representative expansion with Git before writing. `preview` resolves
+exactly one Linear issue, expands the stored rule, validates the result with
+`git check-ref-format --branch`, and prints exactly the resulting branch name. Rule writes
+preserve every unrelated config section. Removing a rule keeps the global username variable.
 
 ## 9. TUI keys
 

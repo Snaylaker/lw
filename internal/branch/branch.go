@@ -200,19 +200,8 @@ func asciiAlphaNumeric(value byte) bool {
 }
 
 func plan(ctx context.Context, repo domain.Repo, name string, found refs, run gitrepo.Runner) (domain.Branch, error) {
-	if name == "" {
-		return domain.Branch{}, invalidName(name, "branch name is empty")
-	}
-	checked, err := run(ctx, repo.Root, "git", []string{"check-ref-format", "--branch", name})
-	if err != nil || checked.ExitCode != 0 {
-		if ctx.Err() != nil {
-			return domain.Branch{}, lwerr.NewCancelled()
-		}
-		reason := firstLine(checked.Stderr)
-		if reason == "git gave no reason" {
-			reason = "git rejected the name"
-		}
-		return domain.Branch{}, invalidName(name, reason)
+	if err := ValidateName(ctx, repo, name, run); err != nil {
+		return domain.Branch{}, err
 	}
 	selected := branchFromRefs(name, found)
 	if !selected.ExistingLocal && selected.ExistingRemote == "" {
@@ -246,9 +235,41 @@ func defaultBase(ctx context.Context, repo domain.Repo, found refs, run gitrepo.
 
 var placeholderRE = regexp.MustCompile(`\{[a-z_]+\}`)
 
-// Expand applies the documented placeholders and rejects unknown ones. This is
-// deliberately not a shell expansion language.
+var knownPlaceholders = map[string]bool{
+	"{username}": true, "{ticket}": true, "{ticket_lower}": true,
+	"{slug}": true, "{linear_branch}": true,
+}
+
+// ValidateTemplate checks the template language without needing a Linear
+// issue. It validates syntax and placeholder names, not values or the final Git
+// ref; preview and worktree creation perform those later checks.
+func ValidateTemplate(template string) error {
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return lwerr.New(lwerr.ConfigInvalid, "branch template is empty",
+			"provide a template such as {username}/{ticket}/{slug}")
+	}
+	for _, placeholder := range placeholderRE.FindAllString(template, -1) {
+		if !knownPlaceholders[placeholder] {
+			return lwerr.New(lwerr.ConfigInvalid,
+				"branch template uses unknown placeholder "+placeholder,
+				"use {username}, {ticket}, {ticket_lower}, {slug}, or {linear_branch}")
+		}
+	}
+	if strings.ContainsAny(placeholderRE.ReplaceAllString(template, ""), "{}") {
+		return lwerr.New(lwerr.ConfigInvalid,
+			"branch template contains an invalid placeholder",
+			"use {username}, {ticket}, {ticket_lower}, {slug}, or {linear_branch}")
+	}
+	return nil
+}
+
+// Expand applies the documented placeholders and rejects missing values. This
+// is deliberately not a shell expansion language.
 func Expand(template string, issue domain.Issue, username string) (string, error) {
+	if err := ValidateTemplate(template); err != nil {
+		return "", err
+	}
 	values := map[string]string{
 		"{username}":      strings.TrimSpace(username),
 		"{ticket}":        issue.Identifier,
@@ -257,12 +278,7 @@ func Expand(template string, issue domain.Issue, username string) (string, error
 		"{linear_branch}": strings.TrimSpace(issue.SuggestedBranch),
 	}
 	for _, placeholder := range placeholderRE.FindAllString(template, -1) {
-		value, known := values[placeholder]
-		if !known {
-			return "", lwerr.New(lwerr.ConfigInvalid,
-				"branch template uses unknown placeholder "+placeholder,
-				"use {username}, {ticket}, {ticket_lower}, {slug}, or {linear_branch}")
-		}
+		value := values[placeholder]
 		if value == "" {
 			return "", lwerr.New(lwerr.ConfigInvalid,
 				"branch template cannot expand "+placeholder,
@@ -270,12 +286,31 @@ func Expand(template string, issue domain.Issue, username string) (string, error
 		}
 		template = strings.ReplaceAll(template, placeholder, value)
 	}
-	if strings.ContainsAny(template, "{}") {
-		return "", lwerr.New(lwerr.ConfigInvalid,
-			"branch template contains an invalid placeholder",
-			"use {username}, {ticket}, {ticket_lower}, {slug}, or {linear_branch}")
-	}
 	return strings.TrimSpace(template), nil
+}
+
+// ValidateName asks Git itself whether an expanded or explicitly entered name
+// is a valid branch ref.
+func ValidateName(ctx context.Context, repo domain.Repo, name string, run gitrepo.Runner) error {
+	if run == nil {
+		run = gitrepo.DefaultRunner
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return invalidName(name, "branch name is empty")
+	}
+	checked, err := run(ctx, repo.Root, "git", []string{"check-ref-format", "--branch", name})
+	if err != nil || checked.ExitCode != 0 {
+		if ctx.Err() != nil {
+			return lwerr.NewCancelled()
+		}
+		reason := firstLine(checked.Stderr)
+		if reason == "git gave no reason" {
+			reason = "git rejected the name"
+		}
+		return invalidName(name, reason)
+	}
+	return nil
 }
 
 func slug(title string) string {

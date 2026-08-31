@@ -53,6 +53,7 @@ func TestRunRoutesToTheCommand(t *testing.T) {
 		{"run with flags", []string{"--repo", "/src", "--issue", "ENG-3971"}, commandRun, Options{Repo: "/src", Issue: "ENG-3971"}},
 		{"launch", []string{"run", "--", "claude", "--model", "sonnet"}, commandLaunch, Options{Command: "run", Args: []string{"claude", "--model", "sonnet"}}},
 		{"doctor", []string{"doctor"}, commandDoctor, Options{Command: "doctor"}},
+		{"branches", []string{"branches", "show-rule"}, commandBranches, Options{Command: "branches", Args: []string{"show-rule"}}},
 		{"context", []string{"context", "--json"}, commandContext, Options{Command: "context", JSON: true}},
 		{"summary", []string{"summary", "narrowed it down"}, commandSummary, Options{Command: "summary", Args: []string{"narrowed it down"}}},
 	}

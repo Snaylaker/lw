@@ -111,6 +111,11 @@ several open a picker. With no match, interactive mode edits Linear's suggestion
 mode requires `--branch` or a repository template. New branches start from the fetched remote
 default branch. Re-selecting an issue reuses its existing worktree.
 
+`lw branches` manages these repository-scoped rules through config's atomic writer. Rule
+lookup and mutation use the same normalized-origin identity as the worktree flow. `preview`
+is the only management action that contacts Linear; it expands the real issue and delegates
+final ref validation to Git.
+
 Metadata lives in the linked worktree's private Git directory as `lw.json`, never in the
 checkout:
 

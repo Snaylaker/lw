@@ -96,13 +96,14 @@ type commandFunc func(ctx context.Context, opts Options, env *execEnv) int
 
 // commands is the dispatch table. The empty key is the run: `lw` on its own.
 var commands = map[string]commandFunc{
-	commandRun:     runFlow,
-	commandLaunch:  runLaunch,
-	commandDoctor:  runDoctor,
-	commandContext: runContext,
-	commandSummary: runSummary,
-	commandPrune:   runPrune,
-	commandLogout:  runLogout,
+	commandRun:      runFlow,
+	commandLaunch:   runLaunch,
+	commandDoctor:   runDoctor,
+	commandBranches: runBranches,
+	commandContext:  runContext,
+	commandSummary:  runSummary,
+	commandPrune:    runPrune,
+	commandLogout:   runLogout,
 }
 
 func dispatch(command string) commandFunc { return commands[command] }
@@ -200,4 +201,4 @@ func writerOr(value, fallback io.Writer) io.Writer {
 }
 
 // The command bodies live by concern: runFlow in run.go, runLaunch in
-// launch.go, then doctor.go, context.go, summary.go, prune.go and logout.go.
+// launch.go, then branches.go, doctor.go, context.go, summary.go, prune.go and logout.go.

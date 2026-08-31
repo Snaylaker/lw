@@ -350,6 +350,45 @@ func TestBranchNamingRulesAreRepositoryScopedAndSanitized(t *testing.T) {
 	}
 }
 
+func TestSetAndUnsetBranchRulePreserveOtherConfiguration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := Write(&StoredConfig{WorktreeRoot: "~/worktrees", PruneMerged: true}, path); err != nil {
+		t.Fatal(err)
+	}
+	update := BranchRuleUpdate{
+		Repository: "gitlab.example.com/group/api",
+		Template:   "{username}/{ticket}/{slug}",
+		Username:   "alex",
+	}
+	changed, err := SetBranchRule(update, path)
+	if err != nil || !changed {
+		t.Fatalf("SetBranchRule = %v, %v", changed, err)
+	}
+	if changed, err = SetBranchRule(update, path); err != nil || changed {
+		t.Fatalf("second SetBranchRule = %v, %v", changed, err)
+	}
+	stored := mustRead(t, path)
+	repository, template, username, ok := BranchRuleEntry(stored, "missing", update.Repository)
+	if !ok || repository != update.Repository || template != update.Template || username != update.Username {
+		t.Fatalf("entry = %q, %q, %q, %v", repository, template, username, ok)
+	}
+	if stored.WorktreeRoot != "~/worktrees" || !stored.PruneMerged {
+		t.Fatalf("other configuration was lost: %+v", stored)
+	}
+
+	changed, err = UnsetBranchRule(update.Repository, path)
+	if err != nil || !changed {
+		t.Fatalf("UnsetBranchRule = %v, %v", changed, err)
+	}
+	if changed, err = UnsetBranchRule(update.Repository, path); err != nil || changed {
+		t.Fatalf("second UnsetBranchRule = %v, %v", changed, err)
+	}
+	stored = mustRead(t, path)
+	if stored.BranchNaming == nil || stored.BranchNaming.Variables.Username != "alex" || stored.BranchNaming.ByRepository != nil {
+		t.Fatalf("username should survive rule removal: %+v", stored.BranchNaming)
+	}
+}
+
 func TestBranchNamingSurvivesOtherConfigWrites(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	stored := &StoredConfig{BranchNaming: &BranchNaming{

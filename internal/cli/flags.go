@@ -12,24 +12,26 @@ import (
 // path-only flow is the empty one: `lw` with no command at all. `lw run` uses
 // that same flow, then starts an explicit child command in the worktree.
 const (
-	commandRun     = ""
-	commandLaunch  = "run"
-	commandDoctor  = "doctor"
-	commandContext = "context"
-	commandSummary = "summary"
-	commandPrune   = "prune"
-	commandLogout  = "logout"
+	commandRun      = ""
+	commandLaunch   = "run"
+	commandDoctor   = "doctor"
+	commandBranches = "branches"
+	commandContext  = "context"
+	commandSummary  = "summary"
+	commandPrune    = "prune"
+	commandLogout   = "logout"
 )
 
 // Options is the parsed command line: what to do, and with which flags. It is
 // the only thing a command body reads about the invocation.
 type Options struct {
-	Command string   // "" path-only flow, "run", "doctor", "context", "summary", "prune", "logout"
-	Args    []string // remaining positional arguments for the subcommand
-	Repo    string
-	Issue   string
-	Branch  string
-	JSON    bool // context --json
+	Command  string   // "" path-only flow, "run", "doctor", "branches", "context", "summary", "prune", "logout"
+	Args     []string // remaining positional arguments for the subcommand
+	Repo     string
+	Issue    string
+	Branch   string
+	Username string
+	JSON     bool // context --json
 	// Yes applies `lw prune`. Without it the command only reports, because
 	// deleting a checkout is not undoable.
 	Yes bool
@@ -57,11 +59,13 @@ func (spec flagSpec) allowedOn(command string) bool {
 }
 
 var flowCommands = []string{commandRun, commandLaunch}
+var repositoryCommands = []string{commandRun, commandLaunch, commandBranches}
 
 var flagSpecs = map[string]flagSpec{
-	"--repo":     {commands: flowCommands, apply: func(o *Options, v string) { o.Repo = v }},
+	"--repo":     {commands: repositoryCommands, apply: func(o *Options, v string) { o.Repo = v }},
 	"--issue":    {commands: flowCommands, apply: func(o *Options, v string) { o.Issue = v }},
 	"--branch":   {commands: flowCommands, apply: func(o *Options, v string) { o.Branch = v }},
+	"--username": {commands: []string{commandBranches}, apply: func(o *Options, v string) { o.Username = v }},
 	"--json":     {boolean: true, commands: []string{commandContext}, apply: func(o *Options, _ string) { o.JSON = true }},
 	"--yes":      {boolean: true, commands: []string{commandPrune}, apply: func(o *Options, _ string) { o.Yes = true }},
 	"--no-fetch": {boolean: true, commands: []string{commandPrune}, apply: func(o *Options, _ string) { o.NoFetch = true }},
@@ -74,6 +78,7 @@ var flagSpecs = map[string]flagSpec{
 var commandNames = []string{
 	commandLaunch,
 	commandDoctor,
+	commandBranches,
 	commandContext,
 	commandSummary,
 	commandPrune,

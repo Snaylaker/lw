@@ -218,6 +218,19 @@ arrow key first to keep and edit the suggestion. Direct `--issue` mode requires
 lw --issue DEMO-4009 --branch alex/demo-4009-fix
 ```
 
+Manage a repository rule without editing JSON:
+
+```sh
+lw branches set-rule --username alex '{username}/{ticket}/{slug}'
+lw branches show-rule
+lw branches preview DEMO-4009
+lw branches unset-rule
+```
+
+Run these inside the repository, or add `--repo ~/Work/api`. `--username` updates the shared
+explicit username variable. `preview` resolves the issue from Linear, expands every placeholder,
+and asks Git to validate the resulting branch name.
+
 ## Commands
 
 | Command | Purpose |
@@ -225,6 +238,10 @@ lw --issue DEMO-4009 --branch alex/demo-4009-fix
 | `lw` | select an issue and create or reuse its worktree |
 | `lw --issue TEAM-123 --branch <name>` | skip the issue picker and name a new branch |
 | `lw doctor` | inspect Git, credentials, configuration, and worktree storage |
+| `lw branches set-rule <template>` | save the current repository's naming rule |
+| `lw branches show-rule` | show the current repository's rule |
+| `lw branches preview TEAM-123` | expand and validate the rule for an issue |
+| `lw branches unset-rule` | remove the current repository's rule |
 | `lw context [--json]` | print this worktree's issue context |
 | `lw summary <text>` | record how the work has changed from the issue title |
 | `lw prune` | show merged or gone worktrees |
@@ -284,7 +301,8 @@ directory. A minimal example:
 Branch rules are keyed by the normalized origin (`host/path`). For a local-only repository,
 you can use its absolute checkout path as the key. Templates support `{username}`, `{ticket}`,
 `{ticket_lower}`, `{slug}`, and `{linear_branch}`. They are expanded as data and never run as
-shell commands.
+shell commands. The `branches` commands identify the repository from its normalized origin and
+fall back to its absolute path when it has no origin.
 
 Each created worktree has an `lw.json` in its private Git directory, not in the checkout:
 
