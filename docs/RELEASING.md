@@ -4,7 +4,7 @@
 
 Before making the repository public:
 
-- Confirm that every contributor and applicable employer has approved the Apache-2.0 release.
+- Confirm that every contributor and applicable employer has approved the MIT release.
 - Enable GitHub secret scanning, push protection, Dependabot alerts and private vulnerability reporting.
 - Protect `main`; require the `ci` workflow and at least one approving review where practical.
 - Restrict tag creation for `v*` tags to maintainers.

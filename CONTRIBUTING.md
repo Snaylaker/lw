@@ -38,5 +38,4 @@ Keep changes focused and explain the user-visible behavior. Add tests for behavi
 Do not commit generated binaries, credentials, private issue data, or environment-specific
 handoff notes.
 
-Unless stated otherwise, contributions submitted to this repository are licensed under the
-Apache License 2.0, as described by section 5 of that license.
+Contributions submitted to this repository are licensed under the [MIT License](LICENSE).
