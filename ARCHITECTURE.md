@@ -23,10 +23,9 @@ project or team loads one bounded page of active issues, with local filtering in
 views. Cycling back preserves the previous issue query. Project and team pins persist as
 stable IDs and rank matching browser rows first; they are preferences, not list caches.
 
-Search results carry project and team metadata so repository routing stays automatic. A
-repository selected for an issue with a project is remembered for that project; a
-projectless issue is remembered by team. A stale association falls back to repository
-selection.
+Search results carry neutral provider scopes so repository routing stays automatic. For Linear,
+a repository selected for an issue with a project is remembered for that project; a projectless
+issue is remembered by team. A stale association falls back to repository selection.
 
 `--issue` bypasses the TUI. `--repo` bypasses repository selection. Outside a repository,
 direct issue mode can use the same remembered project/team association.
@@ -50,10 +49,11 @@ lw.go               public Run entry point for custom binaries
 cmd/lw              the official binary
 provider             public compile-time provider contract and neutral WorkItem
 internal/providers   adapters and Linear/GitHub/Jira implementations
-internal/domain     shared project, issue, repository, stage and result values
+internal/domain     execution values and the canonical WorkItem alias
 internal/lwerr      kind + message + next action
-internal/config     config.json, repository routing and branch rules, atomic writes
+internal/config     config.json, repository routing, branch rules and locked transactions
 internal/credential resolves, saves and removes the Linear key through a vault boundary
+internal/processenv removes provider secrets from child-process environments
 internal/linear     Linear GraphQL transport and optional project/team capabilities
 internal/gitrepo    repository validation and one-level discovery
 internal/branch     ref discovery, template expansion and branch planning
@@ -70,19 +70,22 @@ packages. Tests replace those callbacks; worktree tests use real temporary Git r
 
 The public `provider.Provider` interface exposes only identity, reference validation, exact
 resolution, and search. It returns a neutral `provider.WorkItem` containing separate human
-reference and filesystem-safe worktree key values. Providers cannot access Git, config, TUI, or
-worktree operations.
+reference, filesystem-safe worktree key, and durable routing scopes. A validated registry rejects
+non-canonical, duplicate, and built-in-colliding custom IDs before provider work starts. Providers
+cannot access Git, config, TUI, or worktree operations.
 
 ```text
 Linear GraphQL ─┐
-GitHub REST ────┼→ provider.WorkItem → domain.Issue → branch → worktree
+GitHub REST ────┼→ validate provider.WorkItem → branch → worktree
 Jira REST ──────┘
 ```
 
-`internal/providers` adapts neutral items to the existing domain during migration. Durable
-provider scopes feed the same repository-routing store: Linear project/team, GitHub repository,
-or Jira project. The released binary wires three built-ins; the public Go interface supports
-custom builds through the root `lw.Run` API, not runtime plugin loading.
+`internal/providers` validates and normalizes provider output without changing its neutral
+scopes. Those scopes feed the same repository-routing store: Linear
+project/team, GitHub repository, or Jira project. The released binary wires three built-ins; the
+public Go interface supports custom builds through the root `lw.Run` API, not runtime plugin
+loading. Providers that implement `SensitiveEnvironmentProvider` declare credential variables;
+the registry combines them with built-in secrets before creating Git or `lw run` children.
 
 Provider choice is an explicit reference prefix, `--provider`, `LW_ISSUE_PROVIDER`, config, then
 Linear. GitHub and Jira use environment credentials; only Linear has interactive onboarding and
@@ -137,8 +140,8 @@ several open a picker. With no match, interactive mode edits the provider sugges
 mode requires `--branch` or a repository template. New branches start from the fetched remote
 default branch. Re-selecting an issue reuses its existing worktree.
 
-`lw branches` manages these repository-scoped rules through config's atomic writer. Rule
-lookup and mutation use the same normalized-origin identity as the worktree flow. `preview`
+`lw branches` manages these repository-scoped rules through config's locked read-modify-write
+transactions. Rule lookup and mutation use the same normalized-origin identity as the worktree flow. `preview`
 is the only management action that contacts the selected provider; it expands the real issue and delegates
 final ref validation to Git.
 

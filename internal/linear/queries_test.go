@@ -70,7 +70,7 @@ func searchIssuePage(nodes []string) string {
 func issueIdentifiers(items []domain.Issue) []string {
 	ids := make([]string, 0, len(items))
 	for _, item := range items {
-		ids = append(ids, item.Identifier)
+		ids = append(ids, item.WorktreeKey)
 	}
 	return ids
 }
@@ -248,7 +248,7 @@ func TestResolveIssueQueriesByTeamKeyAndNumber(t *testing.T) {
 	if raw.calls[0].variables.First != 1 || raw.calls[0].variables.After != nil {
 		t.Errorf("variables = %+v, want first 1 and a null cursor", raw.calls[0].variables)
 	}
-	if item.Identifier != "ENG-3971" || item.SuggestedBranch != "alex/eng-3971-fix-it" {
+	if item.WorktreeKey != "ENG-3971" || item.SuggestedBranch != "alex/eng-3971-fix-it" {
 		t.Errorf("issue = %+v", item)
 	}
 }
@@ -424,7 +424,13 @@ func TestFindIssuesResolvesAnExactIdentifierAndCarriesRoutingMetadata(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].ProjectID != "project-cli" || items[0].TeamID != "team-demo" {
+	if len(items) != 1 {
+		t.Fatalf("items = %+v", items)
+	}
+	project, hasProject := items[0].Scope("linear_project")
+	team, hasTeam := items[0].Scope("linear_team")
+	if items[0].Provider != "linear" || items[0].ExternalID != "issue-1" ||
+		!hasProject || project.ID != "project-cli" || !hasTeam || team.ID != "team-demo" {
 		t.Fatalf("items = %+v", items)
 	}
 	if len(raw.calls) != 1 || raw.calls[0].variables.Term != "" {

@@ -100,7 +100,7 @@ func newFlow(ctx context.Context, opts Options, env *execEnv) (*flow, error) {
 		return nil, err
 	}
 
-	providerID, err := selectedProvider(opts, stored, env.env, env.providers)
+	providerID, err := selectedProvider(opts, stored, env.env, env.registry)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func newFlow(ctx context.Context, opts Options, env *execEnv) (*flow, error) {
 			referenceErr = jiraprovider.ValidateReference(opts.Issue)
 		}
 		if referenceErr != nil {
-			return nil, usagef("--issue is not valid for %s: %s", providerDisplayName(providerID, env.providers), referenceErr)
+			return nil, usagef("--issue is not valid for %s: %s", env.registry.displayName(providerID), referenceErr)
 		}
 	}
 
@@ -172,7 +172,10 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 		if err != nil {
 			return nil, Report(err, f.env.stderr)
 		}
-		issue := providers.ToDomain(item)
+		issue, err := providers.Normalize(f.providerID, item)
+		if err != nil {
+			return nil, Report(err, f.env.stderr)
+		}
 		repo := firstRepo(f.flagRepo, f.repo)
 		if repo == nil {
 			if remembered, ok := f.repoForIssue(ctx, issue); ok {
@@ -200,7 +203,7 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 	}
 
 	deps := tui.LauncherDeps{
-		ProviderName:      providerDisplayName(f.providerID, f.env.providers),
+		ProviderName:      f.env.registry.displayName(f.providerID),
 		BrowseCollections: f.providerID == issueprovider.Linear,
 		NeedsRepoRoot:     len(config.RepoRoots(f.stored, f.env.env)) == 0,
 		SuggestedRepoRoot: f.suggestedRepoRoot(),
@@ -211,15 +214,14 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 			return f.setRepoRoot(ctx, root)
 		},
 		SearchIssues:  f.searchIssues,
-		ExecuteFlow:   f.execute,
+		ExecuteFlow:   f.executeBranch,
 		PreselectRepo: f.flagRepo,
 		RepoForIssue: func(issue domain.Issue) (domain.Repo, bool) {
 			return f.repoForIssue(ctx, issue)
 		},
-		RecordRepoUse:     f.recordRepoUse,
-		ResolveBranch:     f.resolveBranch,
-		ChooseBranch:      f.chooseBranch,
-		ExecuteBranchFlow: f.executeBranch,
+		RecordRepoUse: f.recordRepoUse,
+		ResolveBranch: f.resolveBranch,
+		ChooseBranch:  f.chooseBranch,
 	}
 	if f.providerID == issueprovider.Linear {
 		deps.ListProjects = f.listProjects
@@ -256,12 +258,7 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 	return outcome.Result, 0
 }
 
-// execute is step 4, and the only thing the launcher does that touches disk:
-// create or reuse the worktree. worktree.Open writes the metadata itself.
-func (f *flow) execute(ctx context.Context, repo domain.Repo, issue domain.Issue, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
-	return f.executeBranch(ctx, repo, issue, domain.Branch{Name: issue.Identifier}, onStage)
-}
-
+// executeBranch is the only launcher operation that creates or reuses a worktree.
 func (f *flow) executeBranch(ctx context.Context, repo domain.Repo, issue domain.Issue, selected domain.Branch, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
 	// The source repository is only known after the picker. Automatic cleanup
 	// must operate on that choice, never merely on the directory lw started in.
@@ -418,12 +415,7 @@ func (f *flow) setRepoRoot(ctx context.Context, value string) ([]tui.RankedRepo,
 }
 
 func (f *flow) repoForIssue(ctx context.Context, issue domain.Issue) (domain.Repo, bool) {
-	path := ""
-	if issue.ProjectID != "" {
-		path = config.ProjectRepoPath(f.stored, issue.ProjectID)
-	} else {
-		path = config.TeamRepoPath(f.stored, issue.TeamID)
-	}
+	path := config.RepoPath(f.stored, issue.Provider, issue.Scopes)
 	if path == "" {
 		return domain.Repo{}, false
 	}
@@ -435,9 +427,9 @@ func (f *flow) repoForIssue(ctx context.Context, issue domain.Issue) (domain.Rep
 // durable scope: project when present, otherwise team.
 func (f *flow) recordRepoUse(issue domain.Issue, repo domain.Repo) {
 	if _, err := config.RecordRepoUse(config.RepoUse{
-		ProjectID: issue.ProjectID,
-		TeamID:    issue.TeamID,
-		Path:      repo.Root,
+		Provider: issue.Provider,
+		Scopes:   issue.Scopes,
+		Path:     repo.Root,
 	}, f.configPath, f.env.nowMillis()); err != nil {
 		return
 	}
@@ -449,7 +441,7 @@ func (f *flow) searchIssues(ctx context.Context, query string) ([]domain.Issue, 
 	if err != nil {
 		return nil, err
 	}
-	return providers.ToDomains(items), nil
+	return providers.NormalizeAll(f.providerID, items)
 }
 
 func (f *flow) listProjects(ctx context.Context) ([]domain.Project, error) {

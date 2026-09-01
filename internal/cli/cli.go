@@ -126,15 +126,16 @@ type execEnv struct {
 	now        func() time.Time
 	launch     func(deps tui.LauncherDeps) (tui.LauncherOutcome, error)
 	child      ChildRunner
-	providers  map[issueprovider.ID]issueprovider.Provider
+	registry   *providerRegistry
 }
 
 func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
-	providers := make(map[issueprovider.ID]issueprovider.Provider, len(deps.Providers))
-	for _, candidate := range deps.Providers {
-		if candidate != nil && candidate.ID() != "" {
-			providers[candidate.ID()] = candidate
-		}
+	registry, err := newProviderRegistry(deps.Providers)
+	if err != nil {
+		return nil, lwerr.Wrap(err, lwerr.Internal,
+			"the compiled provider registry is invalid: "+err.Error(),
+			"fix the custom lw binary's provider registrations",
+		)
 	}
 	env := &execEnv{
 		stdin:      readerOr(deps.Stdin, os.Stdin),
@@ -150,7 +151,7 @@ func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
 		now:        deps.Now,
 		launch:     deps.Launch,
 		child:      deps.Child,
-		providers:  providers,
+		registry:   registry,
 	}
 	if env.env == nil {
 		env.env = config.OSEnv()
@@ -159,7 +160,7 @@ func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
 		env.platform = config.HostPlatform()
 	}
 	if env.run == nil {
-		env.run = gitrepo.DefaultRunner
+		env.run = gitrepo.NewRunner(registry.sensitiveNames())
 	}
 	if env.http == nil {
 		env.http = &http.Client{Timeout: httpTimeout}

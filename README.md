@@ -109,9 +109,9 @@ lw --issue 'github:owner/repository#42' --branch alex/gh-42-fix
 lw --provider jira --issue OPS-42 --branch alex/ops-42-fix
 ```
 
-Linear onboarding stores its key in the system credential manager when available. GitHub and Jira
-credentials remain environment-owned. Provider tokens are removed from Git children and commands
-launched through `lw run`.
+Linear onboarding stores its key in the system credential manager when available. GitHub, Jira,
+and custom-provider credentials remain environment-owned. Provider tokens declared through the
+provider contract are removed from Git children and commands launched through `lw run`.
 
 ### Configure branch names
 

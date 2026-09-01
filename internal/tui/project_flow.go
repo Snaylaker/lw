@@ -66,15 +66,11 @@ func (m *Launcher) openProjectIssues(project domain.Project) tea.Cmd {
 	if m.projectPicker != nil {
 		m.projectQuery = m.projectPicker.Query()
 	}
-	if m.currentProject == nil || m.currentProject.ID != project.ID {
+	if m.issueSource.kind != issueSourceProject || m.issueSource.project.ID != project.ID {
 		m.projectIssueQuery = ""
 	}
-	selected := project
-	m.currentProject = &selected
-	m.issueViewProject = true
-	m.issueViewTeam = false
-	m.returnToProjectIssues = true
-	m.returnToTeamIssues = false
+	m.issueSource = projectSource(project)
+	m.returnSource = m.issueSource
 	m.screen = ScreenIssues
 	picker := NewIssuePicker(IssuePickerOptions{
 		Local:    true,
@@ -106,14 +102,14 @@ func (m *Launcher) loadProjectIssues(project domain.Project) tea.Cmd {
 }
 
 func (m *Launcher) onProjectIssuesLoaded(msg projectIssuesLoadedMsg) tea.Cmd {
-	if m.settled || msg.token != m.loadToken || m.screen != ScreenIssues || !m.issueViewProject ||
-		m.issuePicker == nil || m.currentProject == nil || msg.projectID != m.currentProject.ID {
+	if m.settled || msg.token != m.loadToken || m.screen != ScreenIssues || m.issueSource.kind != issueSourceProject ||
+		m.issuePicker == nil || msg.projectID != m.issueSource.project.ID {
 		return nil
 	}
 	m.cancelLoad = nil
 	if msg.err != nil {
 		m.projectIssueQuery = m.issuePicker.Query()
-		project := *m.currentProject
+		project := m.issueSource.project
 		m.handleFailure(msg.err, func() tea.Cmd { return m.openProjectIssues(project) })
 		return nil
 	}
@@ -124,11 +120,12 @@ func (m *Launcher) onProjectIssuesLoaded(msg projectIssuesLoadedMsg) tea.Cmd {
 }
 
 func (m *Launcher) reopenIssueView() tea.Cmd {
-	if m.returnToProjectIssues && m.currentProject != nil {
-		return m.openProjectIssues(*m.currentProject)
+	switch m.returnSource.kind {
+	case issueSourceProject:
+		return m.openProjectIssues(m.returnSource.project)
+	case issueSourceTeam:
+		return m.openTeamIssues(m.returnSource.team)
+	default:
+		return m.openIssues()
 	}
-	if m.returnToTeamIssues && m.currentTeam != nil {
-		return m.openTeamIssues(*m.currentTeam)
-	}
-	return m.openIssues()
 }

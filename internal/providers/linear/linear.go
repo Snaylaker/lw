@@ -32,46 +32,13 @@ func (Client) ValidateReference(value string) error {
 }
 
 func (c Client) Resolve(ctx context.Context, reference string) (issueprovider.WorkItem, error) {
-	issue, err := linearapi.ResolveIssue(ctx, linearapi.ResolveIssueRequest{
+	return linearapi.ResolveIssue(ctx, linearapi.ResolveIssueRequest{
 		Credential: c.Credential, Identifier: reference, HTTPClient: c.HTTPClient,
 	})
-	if err != nil {
-		return issueprovider.WorkItem{}, err
-	}
-	return toWorkItem(issue), nil
 }
 
 func (c Client) Search(ctx context.Context, query string) ([]issueprovider.WorkItem, error) {
-	issues, err := linearapi.FindIssues(ctx, linearapi.FindIssuesRequest{
+	return linearapi.FindIssues(ctx, linearapi.FindIssuesRequest{
 		Credential: c.Credential, Query: query, HTTPClient: c.HTTPClient,
 	})
-	if err != nil {
-		return nil, err
-	}
-	items := make([]issueprovider.WorkItem, 0, len(issues))
-	for _, issue := range issues {
-		items = append(items, toWorkItem(issue))
-	}
-	return items, nil
-}
-
-func toWorkItem(issue domain.Issue) issueprovider.WorkItem {
-	item := issueprovider.WorkItem{
-		Provider: issueprovider.Linear, ExternalID: issue.ID,
-		Reference: issue.Identifier, WorktreeKey: issue.Identifier,
-		Title: issue.Title, URL: issue.URL, StateType: issue.StateType,
-		StateName: issue.StateName, SuggestedBranch: issue.SuggestedBranch,
-		BranchKeys: []string{issue.Identifier},
-	}
-	if issue.ProjectID != "" {
-		item.Scopes = append(item.Scopes, issueprovider.Scope{
-			Kind: "linear_project", ID: issue.ProjectID, Name: issue.ProjectName,
-		})
-	}
-	if issue.TeamID != "" {
-		item.Scopes = append(item.Scopes, issueprovider.Scope{
-			Kind: "linear_team", ID: issue.TeamID, Key: issue.TeamKey, Name: issue.TeamName,
-		})
-	}
-	return item
 }

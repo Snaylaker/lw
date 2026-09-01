@@ -9,6 +9,7 @@ import (
 
 	"github.com/snaylaker/lw/internal/domain"
 	"github.com/snaylaker/lw/internal/tui"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 func main() {
@@ -36,19 +37,19 @@ func providerSearch() string {
 	picker.SetQuery("cache")
 	picker.SetIssues([]domain.Issue{
 		{
-			ID: "github-248", Provider: "github", Identifier: "GH-acme-platform-248",
+			ID: "github-248", Provider: "github", WorktreeKey: "GH-acme-platform-248",
 			Reference: "acme/platform#248", Title: "Repair cache invalidation after deploy",
-			StateName: "open", ProjectName: "acme/platform",
+			StateName: "open", Scopes: []issueprovider.Scope{{Kind: "github_repository", ID: "acme/platform", Name: "acme/platform"}},
 		},
 		{
-			ID: "github-231", Provider: "github", Identifier: "GH-acme-platform-231",
+			ID: "github-231", Provider: "github", WorktreeKey: "GH-acme-platform-231",
 			Reference: "acme/platform#231", Title: "Cache repository metadata between commands",
-			StateName: "open", ProjectName: "acme/platform",
+			StateName: "open", Scopes: []issueprovider.Scope{{Kind: "github_repository", ID: "acme/platform", Name: "acme/platform"}},
 		},
 		{
-			ID: "github-219", Provider: "github", Identifier: "GH-acme-cli-219",
+			ID: "github-219", Provider: "github", WorktreeKey: "GH-acme-cli-219",
 			Reference: "acme/cli#219", Title: "Document cache cleanup behavior",
-			StateName: "open", ProjectName: "acme/cli",
+			StateName: "open", Scopes: []issueprovider.Scope{{Kind: "github_repository", ID: "acme/cli", Name: "acme/cli"}},
 		},
 	})
 	_ = picker.FocusInput()
@@ -57,7 +58,7 @@ func providerSearch() string {
 
 func branchName() string {
 	issue := domain.Issue{
-		Provider: "jira", Identifier: "OPS-842", Reference: "OPS-842",
+		Provider: "jira", WorktreeKey: "OPS-842", Reference: "OPS-842",
 		Title: "Repair cache invalidation after deploy",
 	}
 	repo := domain.Repo{Root: "/Users/alex/Work/platform-api", Name: "platform-api"}

@@ -62,6 +62,7 @@ has no hosted service or telemetry.
    - Linear credential resolution is `credentialCommand`, then `LINEAR_API_KEY`, then the saved key.
    - Saved Linear credentials prefer the operating system credential store.
    - GitHub reads `GITHUB_TOKEN`/`GH_TOKEN`; Jira reads its URL, email, and token from environment variables.
+   - Custom providers must declare credential variables through `SensitiveEnvironmentProvider`.
 
 ## How to use `lw`
 
@@ -135,9 +136,10 @@ Preserve these contracts when changing the code:
 lw.go               public custom-binary Run entry point
 cmd/lw              official binary entry point
 internal/cli         parsing, dispatch, orchestration, and child launching
-internal/domain      shared issue, repository, stage, and result values
+internal/domain      execution values and canonical WorkItem alias
 internal/config      local config, repository routing, and branch templates
 internal/credential  credential resolution and storage boundaries
+internal/processenv  provider-secret filtering for child processes
 provider             public compile-time provider and WorkItem contract
 internal/providers   built-in Linear, GitHub, and Jira adapters
 internal/linear      Linear GraphQL transport and collection browsing

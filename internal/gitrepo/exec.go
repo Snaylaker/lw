@@ -9,7 +9,8 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"strings"
+
+	"github.com/snaylaker/lw/internal/processenv"
 )
 
 // ExecResult is a finished command. ExitCode is meaningful only for a command
@@ -30,41 +31,30 @@ type Runner func(ctx context.Context, dir, name string, args []string) (ExecResu
 // signal has no exit code, so it is reported as a failure to run rather than as
 // a non-zero exit.
 func DefaultRunner(ctx context.Context, dir, name string, args []string) (ExecResult, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	// Provider tokens belong to lw, not to git, hooks, filters or any other
-	// process git may start.
-	cmd.Env = withoutProviderSecrets(os.Environ())
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	result := ExecResult{Stdout: stdout.String(), Stderr: stderr.String()}
-	if err == nil {
-		return result, nil
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
-		result.ExitCode = exitErr.ExitCode()
-		return result, nil
-	}
-	return ExecResult{}, err
+	return NewRunner(processenv.BuiltInProviderSecrets())(ctx, dir, name, args)
 }
 
-func withoutProviderSecrets(environ []string) []string {
-	result := make([]string, 0, len(environ))
-	for _, entry := range environ {
-		name, _, _ := strings.Cut(entry, "=")
-		for _, secret := range []string{"LINEAR_API_KEY", "GITHUB_TOKEN", "GH_TOKEN", "JIRA_API_TOKEN"} {
-			if strings.EqualFold(name, secret) {
-				name = ""
-				break
-			}
+// NewRunner returns a Git runner that removes every named provider secret from
+// Git, hooks, filters, and other child processes Git may start.
+func NewRunner(sensitive []string) Runner {
+	blocked := append([]string(nil), sensitive...)
+	return func(ctx context.Context, dir, name string, args []string) (ExecResult, error) {
+		cmd := exec.CommandContext(ctx, name, args...)
+		cmd.Dir = dir
+		cmd.Env = processenv.Without(os.Environ(), blocked)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		result := ExecResult{Stdout: stdout.String(), Stderr: stderr.String()}
+		if err == nil {
+			return result, nil
 		}
-		if name == "" {
-			continue
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
+			result.ExitCode = exitErr.ExitCode()
+			return result, nil
 		}
-		result = append(result, entry)
+		return ExecResult{}, err
 	}
-	return result
 }

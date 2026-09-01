@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/snaylaker/lw/internal/domain"
+	"github.com/snaylaker/lw/internal/processenv"
 )
 
 func TestRunLaunchStartsTheExactCommandInsideTheResolvedWorktree(t *testing.T) {
@@ -37,7 +38,7 @@ func TestRunLaunchStartsTheExactCommandInsideTheResolvedWorktree(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d, stderr %q", code, h.stderr.String())
 	}
-	if want := h.worktreeFor(issue.Identifier); gotDir != want {
+	if want := h.worktreeFor(issue.WorktreeKey); gotDir != want {
 		t.Errorf("child dir = %q, want %q", gotDir, want)
 	}
 	if want := []string{"claude", "--model", "sonnet"}; !reflect.DeepEqual(gotArgv, want) {
@@ -97,11 +98,16 @@ func TestRunLaunchReportsACommandThatCannotStart(t *testing.T) {
 func TestLaunchMapsASignalledChildAfterCancellationTo130(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	registry, err := newProviderRegistry(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	env := &execEnv{
-		stdin:  strings.NewReader(""),
-		stdout: io.Discard,
-		stderr: io.Discard,
-		env:    map[string]string{},
+		stdin:    strings.NewReader(""),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		env:      map[string]string{},
+		registry: registry,
 		child: func(string, []string, []string, io.Reader, io.Writer, io.Writer) (int, error) {
 			return -1, nil
 		},
@@ -113,14 +119,18 @@ func TestLaunchMapsASignalledChildAfterCancellationTo130(t *testing.T) {
 }
 
 func TestChildEnvironmentIsSortedAndRemovesProviderSecretsCaseInsensitively(t *testing.T) {
-	got := childEnvironment(map[string]string{
+	registry, err := newProviderRegistry(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := processenv.FromMap(map[string]string{
 		"ZED":            "last",
 		"linear_api_key": "secret",
 		"github_token":   "secret",
 		"GH_TOKEN":       "secret",
 		"jira_api_token": "secret",
 		"ALPHA":          "first",
-	})
+	}, registry.sensitiveNames())
 	want := []string{"ALPHA=first", "ZED=last"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("environment = %q, want %q", got, want)

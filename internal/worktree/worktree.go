@@ -81,14 +81,16 @@ func Open(ctx context.Context, opts Options) (Result, error) {
 		stage = func(domain.StageUpdate) {}
 	}
 
-	identifier := opts.Issue.Identifier
+	identifier := opts.Issue.WorktreeKey
 	branch := opts.Branch
-	legacyBranch := branch.Name == ""
-	if legacyBranch {
-		branch.Name = identifier
-	}
 	if err := validIdentifier(identifier); err != nil {
 		return Result{}, err
+	}
+	if branch.Name == "" {
+		return Result{}, lwerr.New(lwerr.Internal,
+			"the worktree branch was not resolved",
+			"report this: it is a bug in lw",
+		)
 	}
 	path := Path(opts.Root, opts.Repo.Name, identifier)
 
@@ -98,10 +100,6 @@ func Open(ctx context.Context, opts Options) (Result, error) {
 		stage(domain.StageUpdate{Stage: domain.StagePreparing, State: domain.StateFailed})
 		return Result{}, cancelledFirst(ctx, err)
 	}
-	if legacyBranch {
-		branch.ExistingLocal, _ = branchExists(ctx, opts.Repo.Root, branch.Name, run)
-	}
-
 	if existing := match(registered, opts.Repo.Root, path, branch.Name); existing != nil {
 		if !stale(*existing) {
 			if !samePath(existing.Path, path) {
@@ -182,13 +180,8 @@ func add(ctx context.Context, repoRoot, path string, branch domain.Branch, run g
 	if err == nil && result.ExitCode == 0 {
 		return nil
 	}
-	prune(ctx, repoRoot, run)
-	retry, retryErr := run(ctx, repoRoot, "git", args)
-	if retryErr == nil && retry.ExitCode == 0 {
-		return nil
-	}
-	return lwerr.Wrap(retryErr, lwerr.Internal,
-		`git could not create the worktree at "`+path+`": `+detail(retry, retryErr),
+	return lwerr.Wrap(err, lwerr.Internal,
+		`git could not create the worktree at "`+path+`": `+detail(result, err),
 		"fix what git reports, then run lw again",
 	)
 }

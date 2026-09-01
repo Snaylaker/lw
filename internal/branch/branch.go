@@ -50,7 +50,7 @@ func Resolve(ctx context.Context, options Options) (domain.BranchResolution, err
 		return selectedResolution(selected), nil
 	}
 
-	keys := append([]string{options.Issue.Identifier}, options.Issue.BranchKeys...)
+	keys := append([]string{options.Issue.WorktreeKey}, options.Issue.BranchKeys...)
 	matches := matchingBranches(refs, keys)
 	switch len(matches) {
 	case 1:
@@ -75,7 +75,7 @@ func Resolve(ctx context.Context, options Options) (domain.BranchResolution, err
 
 	suggested := strings.TrimSpace(options.Issue.SuggestedBranch)
 	if suggested == "" {
-		suggested = strings.ToLower(options.Issue.Identifier) + "-" + slug(options.Issue.Title)
+		suggested = strings.ToLower(options.Issue.WorktreeKey) + "-" + slug(options.Issue.Title)
 		suggested = strings.TrimSuffix(suggested, "-")
 	}
 	return domain.BranchResolution{Suggested: suggested}, nil
@@ -282,8 +282,8 @@ func Expand(template string, issue domain.Issue, username string) (string, error
 	}
 	values := map[string]string{
 		"{username}":         strings.TrimSpace(username),
-		"{ticket}":           issue.Identifier,
-		"{ticket_lower}":     strings.ToLower(issue.Identifier),
+		"{ticket}":           issue.WorktreeKey,
+		"{ticket_lower}":     strings.ToLower(issue.WorktreeKey),
 		"{slug}":             slug(issue.Title),
 		"{linear_branch}":    strings.TrimSpace(issue.SuggestedBranch),
 		"{suggested_branch}": strings.TrimSpace(issue.SuggestedBranch),

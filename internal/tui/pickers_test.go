@@ -6,11 +6,21 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/snaylaker/lw/internal/domain"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 var testIssues = []domain.Issue{
-	{ID: "issue-1", Identifier: "DEMO-4009", Title: "Improve workspace startup prompt", StateType: "unstarted", StateName: "Todo", TeamID: "team-demo", TeamKey: "DEMO", TeamName: "Developer Experience", ProjectID: "project-cli", ProjectName: "CLI Reliability"},
-	{ID: "issue-2", Identifier: "DEMO-4007", Title: "Repository scan timeout", StateType: "triage", StateName: "Triage", TeamID: "team-demo", TeamKey: "DEMO", TeamName: "Developer Experience"},
+	{
+		ID: "issue-1", WorktreeKey: "DEMO-4009", Title: "Improve workspace startup prompt", StateType: "unstarted", StateName: "Todo",
+		Scopes: []issueprovider.Scope{
+			{Kind: "linear_project", ID: "project-cli", Name: "CLI Reliability"},
+			{Kind: "linear_team", ID: "team-demo", Key: "DEMO", Name: "Developer Experience"},
+		},
+	},
+	{
+		ID: "issue-2", WorktreeKey: "DEMO-4007", Title: "Repository scan timeout", StateType: "triage", StateName: "Triage",
+		Scopes: []issueprovider.Scope{{Kind: "linear_team", ID: "team-demo", Key: "DEMO", Name: "Developer Experience"}},
+	},
 }
 
 func TestIssuePickerUsesProviderLanguageAndCanHideLinearCollections(t *testing.T) {
@@ -173,7 +183,7 @@ func TestIssuePickerDoesNotLocallyDiscardSemanticResults(t *testing.T) {
 	picker := NewIssuePicker(IssuePickerOptions{})
 	picker.SetQuery("authentication")
 	picker.SetIssues([]domain.Issue{{
-		ID: "issue-1", Identifier: "DEMO-1", Title: "Login failure", StateName: "Todo",
+		ID: "issue-1", WorktreeKey: "DEMO-1", Title: "Login failure", StateName: "Todo",
 	}})
 	mustRowLabels(t, picker.Rows(), "DEMO-1 Login failure")
 }
@@ -188,7 +198,7 @@ func TestIssuePickerKeepsHighlightAndQueryAcrossServerResults(t *testing.T) {
 	picker.Update(typedKey(tea.KeyDown))
 	mustHighlight(t, picker, "issue-2")
 
-	later := append([]domain.Issue{{ID: "issue-0", Identifier: "DEMO-4010", Title: "New", StateName: "Todo"}}, testIssues...)
+	later := append([]domain.Issue{{ID: "issue-0", WorktreeKey: "DEMO-4010", Title: "New", StateName: "Todo"}}, testIssues...)
 	picker.SetIssues(later)
 	if picker.Query() != "DEMO" {
 		t.Errorf("query = %q", picker.Query())
@@ -205,7 +215,7 @@ func TestIssuePickerTruncatesLongTitlesGraphemeSafely(t *testing.T) {
 	picker := NewIssuePicker(IssuePickerOptions{})
 	picker.SetQuery("long")
 	picker.SetIssues([]domain.Issue{{
-		ID: "i", Identifier: "DEMO-1", Title: strings.Repeat("👩‍👩‍👦", 100), StateName: "Backlog",
+		ID: "i", WorktreeKey: "DEMO-1", Title: strings.Repeat("👩‍👩‍👦", 100), StateName: "Backlog",
 	}})
 	mustRowLabels(t, picker.Rows(), "DEMO-1 "+strings.Repeat("👩‍👩‍👦", 79)+"…")
 }

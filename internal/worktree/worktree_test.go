@@ -11,6 +11,7 @@ import (
 	"github.com/snaylaker/lw/internal/domain"
 	"github.com/snaylaker/lw/internal/gitrepo"
 	"github.com/snaylaker/lw/internal/lwerr"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 // isolateGit keeps every test off the machine's git configuration: a global
@@ -67,11 +68,13 @@ func newRepo(t *testing.T) domain.Repo {
 
 func issue(identifier string) domain.Issue {
 	return domain.Issue{
-		ID:         "i-" + identifier,
-		Identifier: identifier,
-		Title:      "Something to do in " + identifier,
-		URL:        "https://linear.app/acme/issue/" + identifier,
-		TeamKey:    strings.SplitN(identifier, "-", 2)[0],
+		ID:          "i-" + identifier,
+		WorktreeKey: identifier,
+		Title:       "Something to do in " + identifier,
+		URL:         "https://linear.app/acme/issue/" + identifier,
+		Scopes: []issueprovider.Scope{{
+			Kind: "linear_team", Key: strings.SplitN(identifier, "-", 2)[0], ID: "team-test",
+		}},
 	}
 }
 
@@ -101,9 +104,11 @@ func (r *recorder) states() []string {
 
 func open(t *testing.T, repo domain.Repo, root, identifier string, stage func(domain.StageUpdate)) (Result, error) {
 	t.Helper()
+	existing, _ := branchExists(context.Background(), repo.Root, identifier, gitrepo.DefaultRunner)
 	return Open(context.Background(), Options{
 		Repo:    repo,
 		Issue:   issue(identifier),
+		Branch:  domain.Branch{Name: identifier, ExistingLocal: existing},
 		Root:    root,
 		OnStage: stage,
 	})
@@ -112,6 +117,17 @@ func open(t *testing.T, repo domain.Repo, root, identifier string, stage func(do
 func TestPathGroupsWorktreesByRepository(t *testing.T) {
 	if got := Path("/root", "acme-api", "ENG-3971"); got != "/root/acme-api/ENG-3971" {
 		t.Fatalf("Path = %q", got)
+	}
+}
+
+func TestOpenRequiresAResolvedBranch(t *testing.T) {
+	_, err := Open(context.Background(), Options{
+		Repo:  domain.Repo{Root: t.TempDir(), Name: "repo"},
+		Issue: issue("ENG-1"),
+		Root:  t.TempDir(),
+	})
+	if !lwerr.Is(err, lwerr.Internal) || !strings.Contains(err.Error(), "branch was not resolved") {
+		t.Fatalf("error = %v, want missing resolved branch", err)
 	}
 }
 
@@ -254,7 +270,7 @@ func TestOpenRefreshesMetadataOfAReusedWorktree(t *testing.T) {
 	}
 	renamed := issue("ENG-1")
 	renamed.Title = "Retitled in Linear"
-	if _, err := Open(context.Background(), Options{Repo: repo, Issue: renamed, Root: root}); err != nil {
+	if _, err := Open(context.Background(), Options{Repo: repo, Issue: renamed, Branch: domain.Branch{Name: renamed.WorktreeKey}, Root: root}); err != nil {
 		t.Fatalf("second Open: %v", err)
 	}
 
@@ -349,7 +365,7 @@ func TestOpenReportsACancellationRatherThanGitsFailure(t *testing.T) {
 	t.Run("cancelled before the listing", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err := Open(ctx, Options{Repo: repo, Issue: issue("ENG-1"), Root: t.TempDir()})
+		_, err := Open(ctx, Options{Repo: repo, Issue: issue("ENG-1"), Branch: domain.Branch{Name: "ENG-1"}, Root: t.TempDir()})
 		assertSilentCancellation(t, err)
 	})
 
@@ -363,10 +379,11 @@ func TestOpenReportsACancellationRatherThanGitsFailure(t *testing.T) {
 			return gitrepo.DefaultRunner(c, dir, name, args)
 		}
 		_, err := Open(ctx, Options{
-			Repo:  repo,
-			Issue: issue("ENG-2"),
-			Root:  t.TempDir(),
-			Run:   run,
+			Repo:   repo,
+			Issue:  issue("ENG-2"),
+			Branch: domain.Branch{Name: "ENG-2"},
+			Root:   t.TempDir(),
+			Run:    run,
 		})
 		assertSilentCancellation(t, err)
 	})

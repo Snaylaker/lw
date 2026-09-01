@@ -21,19 +21,14 @@ func prefixedProviderReference(value string) (issueprovider.ID, string, bool) {
 	if !found || reference == "" {
 		return "", value, false
 	}
-	switch strings.ToLower(prefix) {
-	case "linear":
-		return issueprovider.Linear, reference, true
-	case "github":
-		return issueprovider.GitHub, reference, true
-	case "jira":
-		return issueprovider.Jira, reference, true
-	default:
+	id := issueprovider.ID(strings.ToLower(strings.TrimSpace(prefix)))
+	if !validProviderID(id) {
 		return "", value, false
 	}
+	return id, reference, true
 }
 
-func selectedProvider(opts Options, stored *config.StoredConfig, env map[string]string, extensions map[issueprovider.ID]issueprovider.Provider) (issueprovider.ID, error) {
+func selectedProvider(opts Options, stored *config.StoredConfig, env map[string]string, registry *providerRegistry) (issueprovider.ID, error) {
 	value := strings.TrimSpace(opts.Provider)
 	if prefix, _, ok := prefixedProviderReference(opts.Issue); ok {
 		if value != "" && !strings.EqualFold(value, string(prefix)) {
@@ -59,7 +54,7 @@ func selectedProvider(opts Options, stored *config.StoredConfig, env map[string]
 		return issueprovider.Jira, nil
 	default:
 		id := issueprovider.ID(strings.ToLower(value))
-		if extensions[id] != nil {
+		if registry.knows(id) {
 			return id, nil
 		}
 		return "", usagef("unknown issue provider %q; use linear, github, jira, or a compiled extension", value)
@@ -67,7 +62,7 @@ func selectedProvider(opts Options, stored *config.StoredConfig, env map[string]
 }
 
 func buildProvider(ctx context.Context, id issueprovider.ID, credential domain.Credential, repo *domain.Repo, env *execEnv) (issueprovider.Provider, error) {
-	if extension := env.providers[id]; extension != nil {
+	if extension := env.registry.extension(id); extension != nil {
 		return extension, nil
 	}
 	switch id {
@@ -93,23 +88,6 @@ func buildProvider(ctx context.Context, id issueprovider.ID, credential domain.C
 		})
 	default:
 		return nil, fmt.Errorf("unsupported issue provider %q", id)
-	}
-}
-
-func providerDisplayName(id issueprovider.ID, extensions map[issueprovider.ID]issueprovider.Provider) string {
-	if extension := extensions[id]; extension != nil {
-		if name := strings.TrimSpace(extension.DisplayName()); name != "" {
-			return name
-		}
-		return string(id)
-	}
-	switch id {
-	case issueprovider.GitHub:
-		return "GitHub"
-	case issueprovider.Jira:
-		return "Jira"
-	default:
-		return "Linear"
 	}
 }
 

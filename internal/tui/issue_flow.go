@@ -9,10 +9,8 @@ import (
 )
 
 func (m *Launcher) openIssues() tea.Cmd {
-	m.issueViewProject = false
-	m.issueViewTeam = false
-	m.returnToProjectIssues = false
-	m.returnToTeamIssues = false
+	m.issueSource = issueSource{}
+	m.returnSource = issueSource{}
 	m.screen = ScreenIssues
 	picker := NewIssuePicker(IssuePickerOptions{
 		OnSelect:          func(issue domain.Issue) { m.enqueue(m.chooseIssue(issue)) },
@@ -35,7 +33,7 @@ func (m *Launcher) openIssues() tea.Cmd {
 }
 
 func (m *Launcher) onIssueSearchDue(msg issueSearchDueMsg) tea.Cmd {
-	if m.settled || m.screen != ScreenIssues || m.issueViewProject || m.issueViewTeam || m.issuePicker == nil {
+	if m.settled || m.screen != ScreenIssues || m.issueSource.kind != issueSourceWorkspace || m.issuePicker == nil {
 		return nil
 	}
 	if msg.generation != m.issuePicker.generation || msg.query != m.issuePicker.Query() {
@@ -62,7 +60,7 @@ func (m *Launcher) searchIssues(query string) tea.Cmd {
 }
 
 func (m *Launcher) onIssuesLoaded(msg issuesLoadedMsg) tea.Cmd {
-	if m.settled || msg.token != m.loadToken || m.screen != ScreenIssues || m.issueViewProject || m.issueViewTeam || m.issuePicker == nil || msg.query != strings.TrimSpace(m.issuePicker.Query()) {
+	if m.settled || msg.token != m.loadToken || m.screen != ScreenIssues || m.issueSource.kind != issueSourceWorkspace || m.issuePicker == nil || msg.query != strings.TrimSpace(m.issuePicker.Query()) {
 		return nil
 	}
 	m.cancelLoad = nil
@@ -83,12 +81,12 @@ func (m *Launcher) onIssuesLoaded(msg issuesLoadedMsg) tea.Cmd {
 }
 
 func (m *Launcher) chooseIssue(issue domain.Issue) tea.Cmd {
-	m.repoIssueProject = m.issueViewProject
-	m.repoIssueTeam = m.issueViewTeam
+	m.repoSource = m.issueSource
 	if m.issuePicker != nil {
-		if m.issueViewProject {
+		switch m.issueSource.kind {
+		case issueSourceProject:
 			m.projectIssueQuery = m.issuePicker.Query()
-		} else if m.issueViewTeam {
+		case issueSourceTeam:
 			m.teamIssueQuery = m.issuePicker.Query()
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/snaylaker/lw/internal/lwerr"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 var testHome = map[string]string{"HOME": "/tmp/fake-home"}
@@ -196,6 +197,35 @@ func TestWriteIsAtomicAndUserOnly(t *testing.T) {
 }
 
 // The writer must not HTML-escape <, > or &: config.json is read by people.
+func TestMutationPreservesUnknownKeysAtEveryConfigLevel(t *testing.T) {
+	path := writeFile(t, filepath.Join(t.TempDir(), "config.json"), `{
+		"futureTop":{"enabled":true},
+		"repos":{"futureRepos":1,"recent":[{"path":"/old","usedAt":1,"futureRecent":"keep"}]},
+		"pins":{"projects":["p1"],"futurePins":2},
+		"branchNaming":{
+			"futureNaming":3,
+			"variables":{"username":"alex","futureVariable":4},
+			"byRepository":{"example.test/acme/api":{"template":"{ticket}","futureRule":5}}
+		}
+	}`)
+	if _, err := SetPruneMerged(true, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecordRepoUse(RepoUse{
+		Provider: issueprovider.GitHub,
+		Scopes:   []issueprovider.Scope{{Kind: "github_repository", ID: "acme/api"}},
+		Path:     "/new",
+	}, path, 2); err != nil {
+		t.Fatal(err)
+	}
+	payload := readFile(t, path)
+	for _, key := range []string{"futureTop", "futureRepos", "futureRecent", "futurePins", "futureNaming", "futureVariable", "futureRule"} {
+		if !strings.Contains(payload, `"`+key+`"`) {
+			t.Errorf("mutation dropped %s:\n%s", key, payload)
+		}
+	}
+}
+
 func TestWriteDoesNotHTMLEscape(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := Write(&StoredConfig{CredentialCommand: "R&D <team>"}, path); err != nil {
@@ -525,7 +555,7 @@ func TestRecordRepoUseKeepsRootsAndMovesThePickFirst(t *testing.T) {
 			"recent": [{"path": "/old", "usedAt": 1}]
 		}
 	}`)
-	recent, err := RecordRepoUse(RepoUse{ProjectID: "project-1", Path: "/new"}, path, 2)
+	recent, err := RecordRepoUse(RepoUse{Provider: issueprovider.Linear, Scopes: []issueprovider.Scope{{Kind: "linear_project", ID: "project-1"}}, Path: "/new"}, path, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +576,7 @@ func TestRecordRepoUseKeepsRootsAndMovesThePickFirst(t *testing.T) {
 
 func TestRecordRepoUseFallsBackToTeamOnlyForProjectlessIssues(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if _, err := RecordRepoUse(RepoUse{TeamID: "team-demo", Path: "/incidents"}, path, 1); err != nil {
+	if _, err := RecordRepoUse(RepoUse{Provider: issueprovider.Linear, Scopes: []issueprovider.Scope{{Kind: "linear_team", ID: "team-demo"}}, Path: "/incidents"}, path, 1); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := ReadStoredConfig(path)
@@ -557,7 +587,7 @@ func TestRecordRepoUseFallsBackToTeamOnlyForProjectlessIssues(t *testing.T) {
 		t.Errorf("team repository = %q", got)
 	}
 
-	if _, err := RecordRepoUse(RepoUse{ProjectID: "project-cli", TeamID: "team-demo", Path: "/cli"}, path, 2); err != nil {
+	if _, err := RecordRepoUse(RepoUse{Provider: issueprovider.Linear, Scopes: []issueprovider.Scope{{Kind: "linear_project", ID: "project-cli"}, {Kind: "linear_team", ID: "team-demo"}}, Path: "/cli"}, path, 2); err != nil {
 		t.Fatal(err)
 	}
 	stored, err = ReadStoredConfig(path)
@@ -569,6 +599,25 @@ func TestRecordRepoUseFallsBackToTeamOnlyForProjectlessIssues(t *testing.T) {
 	}
 	if got := TeamRepoPath(stored, "team-demo"); got != "/incidents" {
 		t.Errorf("project choice overwrote team fallback: %q", got)
+	}
+}
+
+func TestRepoRoutingUsesProviderNeutralScopes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	scopes := []issueprovider.Scope{{Kind: "github_repository", ID: "acme/api"}}
+	if _, err := RecordRepoUse(RepoUse{
+		Provider: issueprovider.GitHub,
+		Scopes:   scopes,
+		Path:     "/src/api",
+	}, path, 1); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ReadStoredConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := RepoPath(stored, issueprovider.GitHub, scopes); got != "/src/api" {
+		t.Fatalf("repository = %q, want /src/api", got)
 	}
 }
 

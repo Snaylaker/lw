@@ -61,7 +61,14 @@ func newApp(t *testing.T, tweak func(*LauncherDeps, *appHarness)) *appHarness {
 			h.recordedRepos = append(h.recordedRepos, repo.Root)
 			h.recordedFor = append(h.recordedFor, issue.ID)
 		},
-		ExecuteFlow: func(ctx context.Context, _ domain.Repo, issue domain.Issue, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
+		ResolveBranch: func(_ context.Context, _ domain.Repo, issue domain.Issue) (domain.BranchResolution, error) {
+			branch := domain.Branch{Name: issue.WorktreeKey}
+			return domain.BranchResolution{Selected: &branch}, nil
+		},
+		ChooseBranch: func(_ context.Context, _ domain.Repo, name string) (domain.Branch, error) {
+			return domain.Branch{Name: name}, nil
+		},
+		ExecuteFlow: func(ctx context.Context, _ domain.Repo, issue domain.Issue, _ domain.Branch, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
 			h.flowIssues = append(h.flowIssues, issue)
 			onStage(domain.StageUpdate{Stage: domain.StagePreparing, State: domain.StateDone})
 			onStage(domain.StageUpdate{Stage: domain.StageCreatingWorktree, State: domain.StateActive})
@@ -171,7 +178,7 @@ func TestBranchResolutionPromptsForAnAmbiguousExistingBranch(t *testing.T) {
 				{Name: "alex/demo-4009-two", ExistingRemote: "refs/remotes/origin/alex/demo-4009-two"},
 			}}, nil
 		}
-		deps.ExecuteBranchFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
+		deps.ExecuteFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
 			executed = branch.Name
 			return testFlowResult, nil
 		}
@@ -201,7 +208,7 @@ func TestBranchResolutionOffersAnEditableLinearSuggestion(t *testing.T) {
 			chosen = name
 			return domain.Branch{Name: name, Base: "origin/main"}, nil
 		}
-		deps.ExecuteBranchFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
+		deps.ExecuteFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
 			executed = branch.Name
 			return testFlowResult, nil
 		}
@@ -441,7 +448,7 @@ func TestHappyPathSearchIssueRepositoryAndWorktree(t *testing.T) {
 	if outcome.Cancelled || outcome.Result == nil || outcome.Result.CheckoutPath != testFlowResult.CheckoutPath {
 		t.Fatalf("outcome = %+v", outcome)
 	}
-	if len(h.flowIssues) != 1 || h.flowIssues[0].Identifier != "DEMO-4009" {
+	if len(h.flowIssues) != 1 || h.flowIssues[0].WorktreeKey != "DEMO-4009" {
 		t.Fatalf("flow issues = %+v", h.flowIssues)
 	}
 	if !reflect.DeepEqual(h.recordedFor, []string{"issue-1"}) {
@@ -453,8 +460,9 @@ func TestRememberedRepositorySkipsRepositoryPicker(t *testing.T) {
 	remembered := domain.Repo{Root: "/repos/cli", Name: "cli"}
 	h := newApp(t, func(deps *LauncherDeps, _ *appHarness) {
 		deps.RepoForIssue = func(issue domain.Issue) (domain.Repo, bool) {
-			if issue.ProjectID != "project-cli" {
-				t.Fatalf("project = %q", issue.ProjectID)
+			project, ok := issue.Scope("linear_project")
+			if !ok || project.ID != "project-cli" {
+				t.Fatalf("scopes = %+v", issue.Scopes)
 			}
 			return remembered, true
 		}

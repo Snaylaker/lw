@@ -68,8 +68,11 @@ flag so parsing does not depend on configuration.
 
 Every provider implements the public compile-time interface in `provider.Provider`: stable ID,
 display name, reference validation, exact resolution, and search returning neutral `WorkItem`
-values. Providers never receive Git or worktree operations. Custom binaries pass implementations
-to the public `lw.Run` entry point; the interface is not runtime plugin discovery.
+values. Provider IDs must be canonical and unique; custom providers cannot shadow built-ins.
+Providers never receive Git or worktree operations. A provider that reads credentials from the
+environment implements `provider.SensitiveEnvironmentProvider` so `lw` can remove those variables
+from Git children and launched commands. Custom binaries pass implementations to the public
+`lw.Run` entry point; the interface is not runtime plugin discovery.
 
 Linear's one-input search supports three modes:
 
@@ -165,7 +168,7 @@ back to its local `HEAD`.
 - Existing registered issue worktree: reuse it.
 - Existing resolved branch without a worktree: check it out.
 - Missing branch: create it with `git worktree add -b` from the resolved base.
-- Stale registration: prune and retry once.
+- Failed `git worktree add`: preserve Git's failure without mutating unrelated registrations.
 - Occupied non-worktree path: fail without deleting it.
 
 Metadata is atomically written mode `0600` to the worktree's private Git directory as
@@ -232,9 +235,10 @@ Credential helpers, Git children, and launched commands receive an environment w
 }
 ```
 
-Config is hand-editable, atomically written, directory `0700`, file `0600`. A malformed
-file is an error; malformed entries inside valid JSON are dropped. Preferences are durable
-and are not Linear list caches.
+Config is hand-editable, atomically written, directory `0700`, file `0600`. Mutations lock the
+config across processes for the full read-modify-write transaction. A malformed file is an error;
+malformed entries inside valid JSON are dropped, while unknown keys survive rewrites for forward
+compatibility. Preferences are durable and are not Linear list caches.
 
 Branch rules are repository-scoped. The preferred key is origin normalized to `host/path`;
 an absolute checkout path is also accepted for a repository without a usable origin.

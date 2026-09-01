@@ -109,7 +109,7 @@ func setBranchRule(ctx context.Context, template, suppliedUsername string, repo 
 	// A safe representative issue catches invalid literal separators and an
 	// invalid configured username before the rule reaches a real worktree.
 	sample := domain.Issue{
-		Identifier: "TEAM-123", Title: "branch topic",
+		WorktreeKey: "TEAM-123", Title: "branch topic",
 		SuggestedBranch: "user/team-123-branch-topic",
 	}
 	name, err := branchname.Expand(template, sample, username)
@@ -155,7 +155,7 @@ func previewBranchRule(ctx context.Context, opts Options, identifier string, rep
 	}
 	providerOpts := opts
 	providerOpts.Issue = identifier
-	providerID, err := selectedProvider(providerOpts, stored, env.env, env.providers)
+	providerID, err := selectedProvider(providerOpts, stored, env.env, env.registry)
 	if err != nil {
 		return Report(err, env.stderr)
 	}
@@ -183,7 +183,10 @@ func previewBranchRule(ctx context.Context, opts Options, identifier string, rep
 	if err != nil {
 		return Report(err, env.stderr)
 	}
-	issue := providers.ToDomain(item)
+	issue, err := providers.Normalize(providerID, item)
+	if err != nil {
+		return Report(err, env.stderr)
+	}
 	name, err := branchname.Expand(template, issue, username)
 	if err != nil {
 		return Report(err, env.stderr)

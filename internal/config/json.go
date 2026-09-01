@@ -17,6 +17,92 @@ type Record map[string]json.RawMessage
 // Get returns nil for an absent key, which every shape helper reads as "wrong shape".
 func (r Record) Get(key string) json.RawMessage { return r[key] }
 
+func unknownExcept(record Record, known ...string) Record {
+	result := make(Record, len(record))
+	for key, value := range record {
+		result[key] = append(json.RawMessage(nil), value...)
+	}
+	for _, key := range known {
+		delete(result, key)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func marshalPreservingUnknown(known any, unknown Record) ([]byte, error) {
+	payload, err := marshalWithoutHTMLEscape(known)
+	if err != nil || len(unknown) == 0 {
+		return payload, err
+	}
+	var object Record
+	if err := json.Unmarshal(payload, &object); err != nil {
+		return nil, err
+	}
+	for key, value := range unknown {
+		if _, replaced := object[key]; !replaced {
+			object[key] = value
+		}
+	}
+	return marshalWithoutHTMLEscape(object)
+}
+
+func marshalWithoutHTMLEscape(value any) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
+}
+
+func (value RecentRepo) MarshalJSON() ([]byte, error) {
+	type known RecentRepo
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value ProjectRepo) MarshalJSON() ([]byte, error) {
+	type known ProjectRepo
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value TeamRepo) MarshalJSON() ([]byte, error) {
+	type known TeamRepo
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value RepoPreferences) MarshalJSON() ([]byte, error) {
+	type known RepoPreferences
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value PinPreferences) MarshalJSON() ([]byte, error) {
+	type known PinPreferences
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value BranchRule) MarshalJSON() ([]byte, error) {
+	type known BranchRule
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value BranchVariables) MarshalJSON() ([]byte, error) {
+	type known BranchVariables
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value BranchNaming) MarshalJSON() ([]byte, error) {
+	type known BranchNaming
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
+func (value StoredConfig) MarshalJSON() ([]byte, error) {
+	type known StoredConfig
+	return marshalPreservingUnknown(known(value), value.unknown)
+}
+
 type jsonKind int
 
 const (

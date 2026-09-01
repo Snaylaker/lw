@@ -52,11 +52,9 @@ type LauncherDeps struct {
 	ResolveBranch func(context.Context, domain.Repo, domain.Issue) (domain.BranchResolution, error)
 	ChooseBranch  func(context.Context, domain.Repo, string) (domain.Branch, error)
 
-	// ExecuteBranchFlow is the branch-aware path. ExecuteFlow remains as a
-	// compatibility seam for embedders and tests that still use identifier names.
-	ExecuteBranchFlow func(context.Context, domain.Repo, domain.Issue, domain.Branch, func(domain.StageUpdate)) (domain.FlowResult, error)
-	ExecuteFlow       func(context.Context, domain.Repo, domain.Issue, func(domain.StageUpdate)) (domain.FlowResult, error)
-	DoneClose         time.Duration
+	// ExecuteFlow creates or reuses the worktree for the already-resolved branch.
+	ExecuteFlow func(context.Context, domain.Repo, domain.Issue, domain.Branch, func(domain.StageUpdate)) (domain.FlowResult, error)
+	DoneClose   time.Duration
 }
 
 const defaultDoneClose = 700 * time.Millisecond
@@ -69,6 +67,28 @@ type LauncherOutcome struct {
 }
 
 type Screen string
+
+type issueSourceKind uint8
+
+const (
+	issueSourceWorkspace issueSourceKind = iota
+	issueSourceProject
+	issueSourceTeam
+)
+
+type issueSource struct {
+	kind    issueSourceKind
+	project domain.Project
+	team    domain.Team
+}
+
+func projectSource(project domain.Project) issueSource {
+	return issueSource{kind: issueSourceProject, project: project}
+}
+
+func teamSource(team domain.Team) issueSource {
+	return issueSource{kind: issueSourceTeam, team: team}
+}
 
 const (
 	ScreenCredential      Screen = "credential"
@@ -163,9 +183,10 @@ type Launcher struct {
 	branchInput      *BranchInput
 
 	currentIssue          *domain.Issue
-	currentProject        *domain.Project
-	currentTeam           *domain.Team
 	currentRepo           *domain.Repo
+	issueSource           issueSource
+	returnSource          issueSource
+	repoSource            issueSource
 	searchQuery           string
 	searchItems           []domain.Issue
 	searchResultsQuery    string
@@ -182,12 +203,6 @@ type Launcher struct {
 	teamIssueItems        []domain.Issue
 	teamIssueQuery        string
 	teamIssuesLoadedID    string
-	issueViewProject      bool
-	issueViewTeam         bool
-	returnToProjectIssues bool
-	returnToTeamIssues    bool
-	repoIssueProject      bool
-	repoIssueTeam         bool
 	retryAction           func() tea.Cmd
 	progress              *ProgressView
 	doneResult            *domain.FlowResult
@@ -368,147 +383,4 @@ func (m *Launcher) showError(err *lwerr.Error, retry func() tea.Cmd) {
 		m.retryAction = retry
 	}
 	m.show(NewErrorView(ErrorViewOptions{Error: err, Retryable: m.retryAction != nil}))
-}
-
-func (m *Launcher) onKey(msg tea.KeyMsg) (bool, tea.Cmd) {
-	if m.settled {
-		return true, nil
-	}
-	key := describeKey(msg)
-
-	if key.ctrl && key.name == "c" {
-		if m.flowRunning && m.flowCancel != nil {
-			if !m.flowAborted {
-				m.flowAborted = true
-				if m.progress != nil {
-					m.progress.ShowCancelling()
-				}
-				m.flowCancel()
-			}
-			return true, nil
-		}
-		m.abortLoad()
-		m.settle(LauncherOutcome{Cancelled: true})
-		return true, nil
-	}
-
-	if key.name == "tab" && !key.ctrl && !key.alt && (m.deps.BrowseCollections || m.deps.ProviderName == "") {
-		switch m.screen {
-		case ScreenIssues:
-			m.abortLoad()
-			if m.issuePicker != nil {
-				switch {
-				case m.issueViewProject:
-					m.projectIssueQuery = m.issuePicker.Query()
-				case m.issueViewTeam:
-					m.teamIssueQuery = m.issuePicker.Query()
-				default:
-					m.searchQuery = m.issuePicker.Query()
-				}
-			}
-			m.returnToProjectIssues = m.issueViewProject
-			m.returnToTeamIssues = m.issueViewTeam
-			return true, m.openProjects()
-		case ScreenProjects:
-			m.abortLoad()
-			if m.projectPicker != nil {
-				m.projectQuery = m.projectPicker.Query()
-			}
-			return true, m.openTeams()
-		case ScreenTeams:
-			m.abortLoad()
-			if m.teamPicker != nil {
-				m.teamQuery = m.teamPicker.Query()
-			}
-			return true, m.reopenIssueView()
-		}
-	}
-
-	if key.name == "escape" {
-		switch m.screen {
-		case ScreenCredential, ScreenCredentialSaved:
-			m.abortLoad()
-			m.settle(LauncherOutcome{Cancelled: true})
-		case ScreenIssues:
-			m.abortLoad()
-			if m.issueViewProject {
-				if m.issuePicker != nil {
-					m.projectIssueQuery = m.issuePicker.Query()
-				}
-				m.returnToProjectIssues = true
-				m.returnToTeamIssues = false
-				return true, m.openProjects()
-			}
-			if m.issueViewTeam {
-				if m.issuePicker != nil {
-					m.teamIssueQuery = m.issuePicker.Query()
-				}
-				m.returnToProjectIssues = false
-				m.returnToTeamIssues = true
-				return true, m.openTeams()
-			}
-			m.settle(LauncherOutcome{Cancelled: true})
-		case ScreenProjects, ScreenTeams:
-			m.abortLoad()
-			m.settle(LauncherOutcome{Cancelled: true})
-		case ScreenRoot:
-			m.abortLoad()
-			if m.currentIssue != nil {
-				return true, m.openIssues()
-			}
-			m.settle(LauncherOutcome{Cancelled: true})
-		case ScreenRepos:
-			m.abortLoad()
-			m.currentIssue = nil
-			m.currentRepo = nil
-			m.returnToProjectIssues = m.repoIssueProject
-			m.returnToTeamIssues = m.repoIssueTeam
-			return true, m.reopenIssueView()
-		case ScreenBranchLoading, ScreenBranches, ScreenBranchInput:
-			m.abortLoad()
-			m.currentIssue = nil
-			m.currentRepo = nil
-			m.returnToProjectIssues = m.repoIssueProject
-			m.returnToTeamIssues = m.repoIssueTeam
-			return true, m.reopenIssueView()
-		case ScreenError:
-			m.settle(LauncherOutcome{})
-		}
-		return true, nil
-	}
-
-	if key.name == "r" && key.ctrl && !key.alt {
-		switch {
-		case m.screen == ScreenProjects && m.projectPicker != nil:
-			m.projectPicker.SetLoading()
-			m.projectsLoaded = false
-			return true, m.loadProjects()
-		case m.screen == ScreenTeams && m.teamPicker != nil:
-			m.teamPicker.SetLoading()
-			m.teamsLoaded = false
-			return true, m.loadTeams()
-		case m.screen == ScreenIssues && m.issuePicker != nil && m.issueViewProject && m.currentProject != nil:
-			m.issuePicker.SetLoading()
-			m.projectIssuesLoadedID = ""
-			return true, m.loadProjectIssues(*m.currentProject)
-		case m.screen == ScreenIssues && m.issuePicker != nil && m.issueViewTeam && m.currentTeam != nil:
-			m.issuePicker.SetLoading()
-			m.teamIssuesLoadedID = ""
-			return true, m.loadTeamIssues(*m.currentTeam)
-		case m.screen == ScreenIssues && m.issuePicker != nil:
-			query := m.issuePicker.Query()
-			if searchQueryReady(query) {
-				m.issuePicker.SetSearching()
-				return true, m.searchIssues(query)
-			}
-			return true, nil
-		}
-	}
-
-	if m.screen == ScreenError && m.retryAction != nil && key.name == "r" && !key.ctrl && !key.alt {
-		retry := m.retryAction
-		m.retryAction = nil
-		return true, retry()
-	}
-	return false, nil
 }

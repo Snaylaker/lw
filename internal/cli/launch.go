@@ -5,13 +5,11 @@ import (
 	"errors"
 	"io"
 	"os/exec"
-	"sort"
 	"strconv"
-	"strings"
 
-	"github.com/snaylaker/lw/internal/credential"
 	"github.com/snaylaker/lw/internal/domain"
 	"github.com/snaylaker/lw/internal/lwerr"
+	"github.com/snaylaker/lw/internal/processenv"
 )
 
 // ChildRunner starts one explicit command in a resolved worktree. It receives
@@ -45,7 +43,7 @@ func (f *flow) launch(ctx context.Context, result domain.FlowResult) int {
 	code, err := f.env.child(
 		result.CheckoutPath,
 		f.opts.Args,
-		childEnvironment(f.env.env),
+		processenv.FromMap(f.env.env, f.env.registry.sensitiveNames()),
 		f.env.stdin,
 		f.env.stdout,
 		f.env.stderr,
@@ -82,32 +80,4 @@ func runChild(dir string, argv, environ []string, stdin io.Reader, stdout, stder
 		return exitErr.ExitCode(), nil
 	}
 	return -1, err
-}
-
-// childEnvironment preserves the user's environment except for provider
-// credentials. The launched command can read local lw context but does not need
-// the secret lw used to reach the issue service.
-func childEnvironment(env map[string]string) []string {
-	keys := make([]string, 0, len(env))
-	for key := range env {
-		if !providerSecret(key) {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-
-	result := make([]string, 0, len(keys))
-	for _, key := range keys {
-		result = append(result, key+"="+env[key])
-	}
-	return result
-}
-
-func providerSecret(key string) bool {
-	for _, secret := range []string{credential.EnvVar, "GITHUB_TOKEN", "GH_TOKEN", "JIRA_API_TOKEN"} {
-		if strings.EqualFold(key, secret) {
-			return true
-		}
-	}
-	return false
 }

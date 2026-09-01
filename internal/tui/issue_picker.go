@@ -98,13 +98,7 @@ func (p *IssuePicker) SetIssues(issues []domain.Issue) {
 	for _, issue := range issues {
 		p.issuesByID[issue.ID] = issue
 		hint := issue.StateName
-		scope := issue.ProjectName
-		if scope == "" {
-			scope = issue.TeamName
-			if scope == "" {
-				scope = issue.TeamKey
-			}
-		}
+		scope := issue.ScopeLabel()
 		if hint != "" && scope != "" {
 			hint += " · " + scope
 		} else if scope != "" {

@@ -66,15 +66,11 @@ func (m *Launcher) openTeamIssues(team domain.Team) tea.Cmd {
 	if m.teamPicker != nil {
 		m.teamQuery = m.teamPicker.Query()
 	}
-	if m.currentTeam == nil || m.currentTeam.ID != team.ID {
+	if m.issueSource.kind != issueSourceTeam || m.issueSource.team.ID != team.ID {
 		m.teamIssueQuery = ""
 	}
-	selected := team
-	m.currentTeam = &selected
-	m.issueViewProject = false
-	m.issueViewTeam = true
-	m.returnToProjectIssues = false
-	m.returnToTeamIssues = true
+	m.issueSource = teamSource(team)
+	m.returnSource = m.issueSource
 	m.screen = ScreenIssues
 	picker := NewIssuePicker(IssuePickerOptions{
 		Local:    true,
@@ -106,14 +102,14 @@ func (m *Launcher) loadTeamIssues(team domain.Team) tea.Cmd {
 }
 
 func (m *Launcher) onTeamIssuesLoaded(msg teamIssuesLoadedMsg) tea.Cmd {
-	if m.settled || msg.token != m.loadToken || m.screen != ScreenIssues || !m.issueViewTeam ||
-		m.issuePicker == nil || m.currentTeam == nil || msg.teamID != m.currentTeam.ID {
+	if m.settled || msg.token != m.loadToken || m.screen != ScreenIssues || m.issueSource.kind != issueSourceTeam ||
+		m.issuePicker == nil || msg.teamID != m.issueSource.team.ID {
 		return nil
 	}
 	m.cancelLoad = nil
 	if msg.err != nil {
 		m.teamIssueQuery = m.issuePicker.Query()
-		team := *m.currentTeam
+		team := m.issueSource.team
 		m.handleFailure(msg.err, func() tea.Cmd { return m.openTeamIssues(team) })
 		return nil
 	}

@@ -377,7 +377,8 @@ func TestRunCancellationLeavesAWorktreeAloneAndPrintsNothing(t *testing.T) {
 	h := newHarness(t).withKey("lin_api_key")
 	h.writeConfig(map[string]any{})
 	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
-		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), testIssue("ENG-1"), nil)
+		issue := testIssue("ENG-1")
+		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), issue, domain.Branch{Name: issue.WorktreeKey}, nil)
 		if err != nil {
 			return tui.LauncherOutcome{}, err
 		}
@@ -428,10 +429,12 @@ func TestRunSearchesTheWorkspaceWithoutProjectOrTeamSelection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(issues) != 1 || issues[0].Identifier != "DEMO-4009" {
+		if len(issues) != 1 || issues[0].WorktreeKey != "DEMO-4009" {
 			t.Fatalf("issues = %+v", issues)
 		}
-		if issues[0].ProjectID != "project-cli" || issues[0].TeamID != "team-demo" {
+		project, hasProject := issues[0].Scope("linear_project")
+		team, hasTeam := issues[0].Scope("linear_team")
+		if !hasProject || project.ID != "project-cli" || !hasTeam || team.ID != "team-demo" {
 			t.Fatalf("issue routing metadata = %+v", issues[0])
 		}
 		return tui.LauncherOutcome{Cancelled: true}, nil
@@ -457,15 +460,17 @@ func TestRunUsesAndUpdatesTheRepositoryAssociatedWithAnIssue(t *testing.T) {
 	})
 	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
 		projectIssue := testIssue("DEMO-4009")
-		projectIssue.ProjectID = "project-cli"
-		projectIssue.TeamID = "team-demo"
+		projectIssue.Scopes = []issueprovider.Scope{
+			{Kind: "linear_project", ID: "project-cli"},
+			{Kind: "linear_team", ID: "team-demo"},
+		}
 		repo, ok := deps.RepoForIssue(projectIssue)
 		if !ok || repo.Root != projectRepo {
 			t.Fatalf("project repo = %+v, %v", repo, ok)
 		}
 
 		projectless := testIssue("DEMO-4007")
-		projectless.TeamID = "team-demo"
+		projectless.Scopes = []issueprovider.Scope{{Kind: "linear_team", ID: "team-demo"}}
 		repo, ok = deps.RepoForIssue(projectless)
 		if !ok || repo.Root != teamRepo {
 			t.Fatalf("team repo = %+v, %v", repo, ok)
@@ -776,7 +781,8 @@ func TestAutomaticPruneTargetsTheChosenRepositoryNotTheCurrentOne(t *testing.T) 
 	currentFinished := mergedWorktree(t, h, "ENG-4000")
 	chosen := newRepo(t)
 	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
-		result, err := deps.ExecuteFlow(context.Background(), domain.Repo{Root: chosen, Name: filepath.Base(chosen)}, testIssue("ENG-3971"), nil)
+		issue := testIssue("ENG-3971")
+		result, err := deps.ExecuteFlow(context.Background(), domain.Repo{Root: chosen, Name: filepath.Base(chosen)}, issue, domain.Branch{Name: issue.WorktreeKey}, nil)
 		return tui.LauncherOutcome{Result: &result}, err
 	}
 

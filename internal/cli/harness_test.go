@@ -202,7 +202,7 @@ func (h *harness) launchLauncher(deps tui.LauncherDeps) (tui.LauncherOutcome, er
 // exactly what the real one does before it releases the terminal.
 func (h *harness) picks(issue domain.Issue) {
 	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
-		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), issue, nil)
+		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), issue, domain.Branch{Name: issue.WorktreeKey}, nil)
 		if err != nil {
 			return tui.LauncherOutcome{}, err
 		}
@@ -217,13 +217,15 @@ func (h *harness) worktreeFor(identifier string) string {
 
 func testIssue(identifier string) domain.Issue {
 	return domain.Issue{
-		ID:         "issue-" + identifier,
-		Identifier: identifier,
-		Title:      "Improve command completion output",
-		URL:        "https://linear.app/acme/issue/" + identifier,
-		StateType:  "started",
-		StateName:  "In Progress",
-		TeamKey:    strings.SplitN(identifier, "-", 2)[0],
+		ID:          "issue-" + identifier,
+		WorktreeKey: identifier,
+		Title:       "Improve command completion output",
+		URL:         "https://linear.app/acme/issue/" + identifier,
+		StateType:   "started",
+		StateName:   "In Progress",
+		Scopes: []issueprovider.Scope{{
+			Kind: "linear_team", ID: "team-test", Key: strings.SplitN(identifier, "-", 2)[0],
+		}},
 	}
 }
 

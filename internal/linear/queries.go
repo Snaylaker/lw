@@ -13,6 +13,7 @@ import (
 
 	"github.com/snaylaker/lw/internal/domain"
 	"github.com/snaylaker/lw/internal/lwerr"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 const (
@@ -276,24 +277,29 @@ func toTeams(nodes []teamNode) []domain.Team {
 
 func toIssue(node issueNode) domain.Issue {
 	item := domain.Issue{
+		Provider:        issueprovider.Linear,
 		ID:              node.ID,
-		Identifier:      node.Identifier,
+		ExternalID:      node.ID,
+		Reference:       node.Identifier,
+		WorktreeKey:     node.Identifier,
 		Title:           node.Title,
 		URL:             node.URL,
 		SuggestedBranch: node.BranchName,
+		BranchKeys:      []string{node.Identifier},
 	}
 	if node.State != nil {
 		item.StateType = node.State.Type
 		item.StateName = node.State.Name
 	}
-	if node.Team != nil {
-		item.TeamID = node.Team.ID
-		item.TeamKey = node.Team.Key
-		item.TeamName = node.Team.Name
-	}
 	if node.Project != nil {
-		item.ProjectID = node.Project.ID
-		item.ProjectName = node.Project.Name
+		item.Scopes = append(item.Scopes, issueprovider.Scope{
+			Kind: "linear_project", ID: node.Project.ID, Name: node.Project.Name,
+		})
+	}
+	if node.Team != nil {
+		item.Scopes = append(item.Scopes, issueprovider.Scope{
+			Kind: "linear_team", ID: node.Team.ID, Key: node.Team.Key, Name: node.Team.Name,
+		})
 	}
 	return item
 }
@@ -317,10 +323,12 @@ func toIssues(nodes []issueNode) []domain.Issue {
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
-		if team := compareNames(a.TeamKey, b.TeamKey); team != 0 {
+		aTeam, _ := a.Scope("linear_team")
+		bTeam, _ := b.Scope("linear_team")
+		if team := compareNames(aTeam.Key, bTeam.Key); team != 0 {
 			return team < 0
 		}
-		return identifierNumber(a.Identifier) > identifierNumber(b.Identifier)
+		return identifierNumber(a.WorktreeKey) > identifierNumber(b.WorktreeKey)
 	})
 	return items
 }

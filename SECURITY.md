@@ -22,5 +22,8 @@ You should receive an acknowledgment within seven days.
 and Jira URLs must be HTTPS except for localhost development. It has no telemetry or hosted
 service. It stores local preferences and worktree metadata, and it stores only the Linear key,
 inside the operating-system credential store or an explicitly approved owner-only file. GitHub
-and Jira tokens remain environment-owned. A configured `credentialCommand` is intentionally
-executed through the platform shell and must be treated as trusted local configuration.
+and Jira tokens remain environment-owned. Custom providers declare sensitive environment
+variables through `provider.SensitiveEnvironmentProvider`; `lw` removes all declared provider
+secrets from Git children and commands launched through `lw run`. A configured
+`credentialCommand` is intentionally executed through the platform shell and must be treated as
+trusted local configuration.

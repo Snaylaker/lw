@@ -64,16 +64,6 @@ func tempDir(t *testing.T) string {
 	return resolved
 }
 
-func TestGitChildrenNeverInheritProviderSecrets(t *testing.T) {
-	env := withoutProviderSecrets([]string{
-		"PATH=/bin", "LINEAR_API_KEY=secret", "linear_api_key=also-secret",
-		"GITHUB_TOKEN=secret", "gh_token=secret", "JIRA_API_TOKEN=secret", "HOME=/tmp",
-	})
-	if got, want := strings.Join(env, "|"), "PATH=/bin|HOME=/tmp"; got != want {
-		t.Errorf("environment = %q, want %q", got, want)
-	}
-}
-
 func TestResolveFindsToplevelFromASubdirectory(t *testing.T) {
 	requireGit(t)
 	dir := filepath.Join(tempDir(t), "acme-api")

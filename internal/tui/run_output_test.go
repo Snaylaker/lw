@@ -105,7 +105,7 @@ func TestTheLauncherBodyRendersIntoTheWriterItIsGiven(t *testing.T) {
 		SearchIssues: func(context.Context, string) ([]domain.Issue, error) {
 			return nil, nil
 		},
-		ExecuteFlow: func(context.Context, domain.Repo, domain.Issue, func(domain.StageUpdate)) (domain.FlowResult, error) {
+		ExecuteFlow: func(context.Context, domain.Repo, domain.Issue, domain.Branch, func(domain.StageUpdate)) (domain.FlowResult, error) {
 			return domain.FlowResult{}, nil
 		},
 	}

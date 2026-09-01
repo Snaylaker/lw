@@ -28,7 +28,9 @@ type Scope struct {
 // safe, deterministic path segment. Reference is the human-facing provider
 // reference, which may contain characters such as GitHub's slash and hash.
 type WorkItem struct {
-	Provider        ID
+	Provider ID
+	// ID is lw's normalized selection key. Providers may leave it empty.
+	ID              string
 	ExternalID      string
 	Reference       string
 	WorktreeKey     string
@@ -41,6 +43,34 @@ type WorkItem struct {
 	Scopes          []Scope
 }
 
+func (item WorkItem) DisplayReference() string {
+	if item.Reference != "" {
+		return item.Reference
+	}
+	return item.WorktreeKey
+}
+
+func (item WorkItem) Scope(kind string) (Scope, bool) {
+	for _, scope := range item.Scopes {
+		if scope.Kind == kind {
+			return scope, true
+		}
+	}
+	return Scope{}, false
+}
+
+func (item WorkItem) ScopeLabel() string {
+	for _, scope := range item.Scopes {
+		if scope.Name != "" {
+			return scope.Name
+		}
+		if scope.Key != "" {
+			return scope.Key
+		}
+	}
+	return ""
+}
+
 // Provider is the compile-time extension point. Go interfaces are satisfied
 // implicitly: an implementation needs only these methods and does not import
 // lw's Git or worktree packages.
@@ -50,4 +80,11 @@ type Provider interface {
 	ValidateReference(reference string) error
 	Resolve(ctx context.Context, reference string) (WorkItem, error)
 	Search(ctx context.Context, query string) ([]WorkItem, error)
+}
+
+// SensitiveEnvironmentProvider is an optional capability for providers that
+// read credentials from environment variables. lw removes these variables from
+// Git processes and commands launched with `lw run`.
+type SensitiveEnvironmentProvider interface {
+	SensitiveEnvironmentVariables() []string
 }

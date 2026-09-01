@@ -1,6 +1,7 @@
-// Package domain holds the value types shared across packages. It imports
-// nothing from the rest of the tree, so every other package may depend on it.
+// Package domain holds the value types shared across lw's internal packages.
 package domain
+
+import issueprovider "github.com/snaylaker/lw/provider"
 
 // Project is one active Linear project in the optional project browser.
 type Project struct {
@@ -17,37 +18,9 @@ type Team struct {
 	Name string
 }
 
-// Issue is one provider work item adapted for lw's existing flow. Identifier
-// is the safe worktree directory key; Reference is the provider's human-facing
-// name, such as ENG-3971 or owner/repository#123. The repository's actual Git
-// branch is resolved separately.
-type Issue struct {
-	ID              string
-	Provider        string
-	ExternalID      string
-	Identifier      string
-	Reference       string
-	Title           string
-	URL             string
-	StateType       string // triage | backlog | unstarted | started | completed | canceled
-	StateName       string
-	TeamID          string
-	TeamKey         string
-	TeamName        string
-	ProjectID       string // empty when the issue has no project
-	ProjectName     string
-	SuggestedBranch string
-	BranchKeys      []string
-}
-
-// DisplayReference keeps older in-process callers compatible while provider
-// adapters supply a richer reference.
-func (i Issue) DisplayReference() string {
-	if i.Reference != "" {
-		return i.Reference
-	}
-	return i.Identifier
-}
+// Issue is the provider-neutral work item used by the execution flow. The
+// alias keeps one canonical model at the public provider boundary.
+type Issue = issueprovider.WorkItem
 
 // Branch is the git branch selected for an issue. ExistingLocal means it can be
 // checked out directly. ExistingRemote names a remote-tracking ref from which

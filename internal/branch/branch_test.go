@@ -47,7 +47,7 @@ func repo(t *testing.T) domain.Repo {
 }
 
 func ticket() domain.Issue {
-	return domain.Issue{Identifier: "ENG-12", Title: "Fix Count Endpoint", SuggestedBranch: "mehdi/eng-12-fix-count-endpoint"}
+	return domain.Issue{WorktreeKey: "ENG-12", Title: "Fix Count Endpoint", SuggestedBranch: "mehdi/eng-12-fix-count-endpoint"}
 }
 
 func TestResolveReusesOneBoundaryMatchedLocalBranch(t *testing.T) {
@@ -197,7 +197,7 @@ func TestResolveFetchesOriginAndBasesNewBranchesOnItsDefault(t *testing.T) {
 		t.Fatalf("origin/main was not refreshed: %q", got)
 	}
 
-	remoteIssue := domain.Issue{Identifier: "ENG-13", Title: "Remote work"}
+	remoteIssue := domain.Issue{WorktreeKey: "ENG-13", Title: "Remote work"}
 	remoteResolution, err := Resolve(context.Background(), Options{Repo: repository, Issue: remoteIssue})
 	if err != nil {
 		t.Fatal(err)
