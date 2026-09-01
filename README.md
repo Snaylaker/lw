@@ -12,11 +12,17 @@ metadata, and exits. It does not start an editor, shell, terminal multiplexer, o
 
 ## The app
 
+### Search issues
+
 ![Search GitHub issues in lw](docs/images/provider-search.png)
 
-| Repository branch naming | Worktree creation |
-| --- | --- |
-| ![Edit the suggested branch name](docs/images/branch-name.png) | ![Create the isolated worktree](docs/images/worktree-ready.png) |
+### Name the repository branch
+
+![Edit the suggested branch name](docs/images/branch-name.png)
+
+### Create the worktree
+
+![Create the isolated worktree](docs/images/worktree-ready.png)
 
 The screenshots use deterministic synthetic data rendered from the real TUI views. See
 [`docs/images`](docs/images/README.md) for the reproducible capture command.
