@@ -1,14 +1,15 @@
 # lw
 
-`lw` turns a Linear, GitHub, Jira, or custom-provider issue into an isolated Git worktree and
-prints its path.
+`lw` turns a Linear, GitHub, Jira, or custom-provider issue into an isolated Git worktree. It can
+print the path or launch your coding tool directly inside it:
 
 ```sh
 cd "$(lw)"
+lw run -- claude
 ```
 
-It is a local, read-only client for issue providers. It does not start an editor, shell, terminal
-multiplexer, or coding agent.
+It is a local, read-only client for issue providers. It only starts a tool when you explicitly use
+`lw run`.
 
 ## Screenshots
 
@@ -29,6 +30,7 @@ The screenshots use synthetic data rendered from the real TUI views. See
 
 ## Features
 
+- Launches coding tools directly inside a selected issue's worktree with `lw run`.
 - Searches Linear, GitHub Issues, and Jira Cloud.
 - Routes each provider scope to the right local repository.
 - Reuses matching local or remote branches before creating one.
@@ -43,6 +45,20 @@ Worktrees use a predictable path independent of the branch name:
 ```text
 ~/.lw/worktrees/<repository>/<ISSUE>
 ```
+
+## Run tools in the issue worktree
+
+`lw run` creates or reuses the selected issue's worktree, then starts a command inside it:
+
+```sh
+lw run -- claude
+lw run -- codex --full-auto
+lw run -- cursor .
+```
+
+The command runs directly, without a shell, and owns the terminal and exit code. Issue metadata is
+available through `lw context`; it is not automatically injected into the command. Provider API
+tokens are removed from the command's environment.
 
 ## Install
 
@@ -123,7 +139,7 @@ Templates support `{username}`, `{ticket}`, `{ticket_lower}`, `{slug}`, `{sugges
 | `lw branches <command>` | manage repository branch rules |
 | `lw context [--json]` | print local issue context |
 | `lw summary <text>` | update the local worktree summary |
-| `lw run -- <command>` | run a command with issue context |
+| `lw run -- <command>` | run a command inside the selected issue's worktree |
 | `lw prune [--yes]` | inspect or remove stale worktrees |
 | `lw logout` | remove the Linear key saved by onboarding |
 
