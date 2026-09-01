@@ -50,7 +50,7 @@ jobs:
           cache: true
       - name: Verify formatting and generated notices
         run: |
-          test -z "$(gofmt -l ./cmd ./internal)"
+          test -z "$(gofmt -l .)"
           ./scripts/generate-third-party-notices.sh
           git diff --exit-code -- THIRD_PARTY_NOTICES.md
       - run: go test -race ./...

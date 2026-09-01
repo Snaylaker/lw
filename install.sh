@@ -8,7 +8,7 @@
 # directory and a temporary directory it removes on exit.
 #
 #   curl -fsSL https://raw.githubusercontent.com/snaylaker/lw/main/install.sh | sh
-#   curl -fsSL .../install.sh | sh -s -- --version v0.1.0 --dir /opt/tools/bin
+#   curl -fsSL .../install.sh | sh -s -- --version v0.4.0 --dir /opt/tools/bin
 
 set -eu
 
@@ -43,7 +43,7 @@ lw installer
 Usage: install.sh [options]
 
 Options:
-  --version <tag>       release to install (e.g. v0.1.0); default: latest release
+  --version <tag>       release to install (e.g. v0.4.0); default: latest release
   --dir <path>          directory to install into; default: ~/.local/bin
   --build-from-source   skip the prebuilt asset and build with `go build`
   --help                print this message

@@ -16,7 +16,7 @@ Before making the repository public:
 Run from a clean checkout:
 
 ```sh
-test -z "$(gofmt -l ./cmd ./internal)"
+test -z "$(gofmt -l .)"
 go mod verify
 go test ./...
 go test -race ./...
@@ -37,8 +37,9 @@ value in logs.
 Releases use immutable semantic-version tags:
 
 ```sh
-git tag -s v0.1.0 -m "lw v0.1.0"
-git push origin v0.1.0
+VERSION=v1.2.3
+git tag -s "$VERSION" -m "lw $VERSION"
+git push origin "$VERSION"
 ```
 
 The release workflow verifies the tag, runs the full gate, cross-builds four targets,
@@ -49,7 +50,8 @@ After publication, test the documented installer in a disposable environment and
 asset independently:
 
 ```sh
-gh release download v0.1.0 --repo snaylaker/lw
-gh attestation verify lw_0.1.0_linux_amd64.tar.gz --repo snaylaker/lw
+VERSION=v1.2.3
+gh release download "$VERSION" --repo snaylaker/lw
+gh attestation verify "lw_${VERSION#v}_linux_amd64.tar.gz" --repo snaylaker/lw
 sha256sum --check checksums.txt
 ```

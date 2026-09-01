@@ -10,6 +10,29 @@ It reads the selected issue provider, creates or reuses a local worktree, writes
 metadata, and exits. It does not start an editor, shell, terminal multiplexer, or coding agent.
 `lw` is independent and is not affiliated with or endorsed by Linear, GitHub, or Atlassian.
 
+## The app
+
+![Search GitHub issues in lw](docs/images/provider-search.png)
+
+| Repository branch naming | Worktree creation |
+| --- | --- |
+| ![Edit the suggested branch name](docs/images/branch-name.png) | ![Create the isolated worktree](docs/images/worktree-ready.png) |
+
+The screenshots use deterministic synthetic data rendered from the real TUI views. See
+[`docs/images`](docs/images/README.md) for the reproducible capture command.
+
+## Supported issue providers
+
+| Provider | Interactive search | Direct reference | Authentication |
+| --- | --- | --- | --- |
+| Linear | workspace, team, project, and team browsers | `ENG-3971` or `linear:ENG-3971` | onboarding, `LINEAR_API_KEY`, or `credentialCommand` |
+| GitHub | open issues; pull requests excluded | `github:owner/repository#42` | `GITHUB_TOKEN`, `GH_TOKEN`, or public access |
+| Jira Cloud | active issues through enhanced JQL | `jira:OPS-42` | `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` |
+| Custom build | provider-defined | `--provider <id> --issue <reference>` | provider-defined |
+
+Every provider enters the same repository routing, branch discovery, worktree, metadata, context,
+pruning, and command-launch flow.
+
 ## Flagship features
 
 ### 1. Turn an issue into an isolated checkout
@@ -103,12 +126,12 @@ cd ~/Work/api
 cd "$(lw)"
 ```
 
-On first use, `lw` asks for:
+Linear is the default provider. On its first use, `lw` asks for a Read-only Linear personal API
+key. GitHub and Jira use the environment variables in [Choose an issue provider](#choose-an-issue-provider).
+When repository roots are not configured, `lw` also asks for the parent directory containing your
+repositories, such as `~/Work`.
 
-1. A Linear personal API key with `Read` permission.
-2. The parent directory containing your repositories, such as `~/Work`.
-
-The issue picker searches your workspace. Select an issue and repository, then `lw` creates
+The issue picker searches the selected provider. Select an issue and repository, then `lw` creates
 or reuses:
 
 ```text
@@ -138,7 +161,7 @@ Useful installer options:
 ```sh
 # Install a specific release
 curl -fsSL https://raw.githubusercontent.com/Snaylaker/lw/main/install.sh |
-  sh -s -- --version v0.1.0
+  sh -s -- --version v0.4.0
 
 # Choose the destination
 curl -fsSL https://raw.githubusercontent.com/Snaylaker/lw/main/install.sh |
