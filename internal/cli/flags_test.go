@@ -19,6 +19,8 @@ func TestParseAcceptedInvocations(t *testing.T) {
 		{"attached repo", []string{"--repo=/src/acme-api"}, Options{Repo: "/src/acme-api"}},
 		{"fully direct", []string{"--repo", "/src/acme-api", "--issue", "DEMO-4009", "--branch", "alex/demo-4009-fix"}, Options{Repo: "/src/acme-api", Issue: "DEMO-4009", Branch: "alex/demo-4009-fix"}},
 		{"attached issue", []string{"--issue=DEMO-4009"}, Options{Issue: "DEMO-4009"}},
+		{"GitHub issue", []string{"--provider", "github", "--issue", "acme/api#42"}, Options{Provider: "github", Issue: "acme/api#42"}},
+		{"Jira issue", []string{"--provider", "jira", "--issue", "OPS-42"}, Options{Provider: "jira", Issue: "OPS-42"}},
 		{"launch", []string{"run", "--", "claude"}, Options{Command: "run", Args: []string{"claude"}}},
 		{"launch flags and arguments", []string{"run", "--repo", "/src/acme-api", "--issue", "DEMO-4009", "--", "codex", "--full-auto"}, Options{Command: "run", Repo: "/src/acme-api", Issue: "DEMO-4009", Args: []string{"codex", "--full-auto"}}},
 		{"launch without separator", []string{"run", "claude"}, Options{Command: "run", Args: []string{"claude"}}},

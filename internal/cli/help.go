@@ -2,7 +2,7 @@ package cli
 
 // Version is the build stamp printed by --version. Releases override it with
 //
-//	go build -ldflags "-X github.com/snaylaker/lw/internal/cli.Version=v0.2.0"
+//	go build -ldflags "-X github.com/snaylaker/lw/internal/cli.Version=v0.4.0"
 //
 // so a source build is honestly labelled "dev".
 var Version = "dev"
@@ -10,13 +10,15 @@ var Version = "dev"
 // helpText lists every command and every flag. It is printed by --help, and
 // again after the message of any usage error, so a wrong invocation always ends
 // looking at the right one.
-const helpText = `lw — pick a Linear issue and prepare a git worktree.
+const helpText = `lw — pick an issue and prepare a git worktree.
 
 Plain lw prints the worktree path on stdout and nothing else:
 
   cd "$(lw)"                      search issues, then change into the worktree
   cd "$(lw --issue ENG-3971 --branch alex/eng-3971-fix)"
-                                      resolve one issue without the terminal UI
+                                      resolve one Linear issue without the UI
+  cd "$(lw --issue github:owner/repo#42 --branch alex/gh-42-fix)"
+                                      resolve one GitHub issue without the UI
   lw --repo ~/src/api             search issues for this repository
 
 Use lw run to start an explicit command after creating or reusing the worktree:
@@ -26,7 +28,7 @@ Use lw run to start an explicit command after creating or reusing the worktree:
   lw run -- cursor .
 
 The command runs directly, without a shell, in the worktree. It owns stdin,
-stdout, stderr and its exit code. LINEAR_API_KEY is removed from its environment.
+stdout, stderr and its exit code. Provider API tokens are removed from its environment.
 
 Usage:
   lw [flags]                              issue, repository, then path on stdout
@@ -45,18 +47,20 @@ In interactive search, Tab cycles issue/project/team views; Ctrl+P pins a projec
 
 Repository and flow flags:
   --repo <path>           use this repository; valid for flows and lw branches
-  --issue <IDENT>         resolve one issue directly; no terminal UI is used
+  --issue <IDENT>         resolve one issue directly; provider-specific reference
+  --provider <name>       use linear, github, or jira (default: linear)
   --branch <name>         use this branch (required for a new branch in direct mode
                           unless this repository has a branchNaming template)
 
 lw branches:
   set-rule <template>     save this repository's branch naming template
   show-rule               show this repository's rule and username
-  preview <IDENT>         expand and Git-validate the rule for a Linear issue
+  preview <IDENT>         expand and Git-validate the rule for a provider issue
   unset-rule              remove this repository's rule
   --username <name>       set the shared explicit {username} template value
 
-Templates support {username}, {ticket}, {ticket_lower}, {slug}, and {linear_branch}.
+Templates support {username}, {ticket}, {ticket_lower}, {slug}, {suggested_branch},
+and the backward-compatible {linear_branch} alias.
 
 lw prune flags:
   --yes                   actually remove; without it prune only reports
@@ -68,10 +72,13 @@ Other flags:
   --version               print the version and exit
   --help                  print this help and exit
 
-Credentials:
-  On first run, paste a Read-only Linear API key inside lw. It is saved in the
-  system keychain when available; owner-only file storage requires approval.
-  credentialCommand and LINEAR_API_KEY remain available for advanced use.
+Providers and credentials:
+  Linear is the default Read-only provider and keeps its in-app key onboarding,
+  system keychain,
+  credentialCommand, and LINEAR_API_KEY sources. GitHub reads GITHUB_TOKEN or
+  GH_TOKEN; without one it can read public issues. Jira Cloud
+  reads JIRA_BASE_URL, JIRA_EMAIL, and JIRA_API_TOKEN. Select with --provider,
+  LW_ISSUE_PROVIDER, or issueProvider in config.json. All access is read-only.
 
 Exit codes: 0 success · 1 error · 2 usage · 130 cancelled.
 `

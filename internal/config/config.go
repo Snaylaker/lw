@@ -1,5 +1,5 @@
-// Package config reads and writes the non-secret preference file. The Linear
-// API key is never stored in config.json: the file may name a
+// Package config reads and writes the non-secret preference file. Provider
+// API tokens are never stored in config.json: the file may name a Linear
 // `credentialCommand` to fetch it, while onboarding stores the key separately
 // in the system credential store or an explicitly approved owner-only file.
 package config
@@ -104,6 +104,9 @@ type StoredConfig struct {
 	Repos        *RepoPreferences `json:"repos,omitempty"`
 	Pins         *PinPreferences  `json:"pins,omitempty"`
 	BranchNaming *BranchNaming    `json:"branchNaming,omitempty"`
+	// IssueProvider selects the default read-only issue service. Empty preserves
+	// the original Linear behavior.
+	IssueProvider string `json:"issueProvider,omitempty"`
 	// WorktreeRoot holds the checkouts, one subdirectory per repository. Empty
 	// means DefaultWorktreeRoot. Absolute or "~"-prefixed, so the file survives
 	// a home move.
@@ -171,6 +174,7 @@ func ReadStoredConfig(path string) (*StoredConfig, error) {
 		Repos:             sanitizeRepoPreferences(record.Get("repos")),
 		Pins:              sanitizePinPreferences(record.Get("pins")),
 		BranchNaming:      sanitizeBranchNaming(record.Get("branchNaming")),
+		IssueProvider:     sanitizeProviderValue(record.Get("issueProvider")),
 		WorktreeRoot:      sanitizePathValue(record.Get("worktreeRoot")),
 		CredentialCommand: sanitizeCommandValue(record.Get("credentialCommand")),
 		PruneMerged:       sanitizeBoolValue(record.Get("pruneMerged")),
@@ -553,6 +557,27 @@ func sanitizeCommandValue(raw json.RawMessage) string {
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+func sanitizeProviderValue(raw json.RawMessage) string {
+	value, ok := AsString(raw)
+	if !ok {
+		return ""
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	for _, character := range value {
+		if character < 'a' || character > 'z' {
+			if character < '0' || character > '9' {
+				if character != '-' && character != '_' {
+					return ""
+				}
+			}
+		}
+	}
+	return value
 }
 
 // sanitizeBoolValue drops anything that is not a real boolean. For a flag whose

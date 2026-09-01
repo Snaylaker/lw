@@ -1,18 +1,18 @@
 # lw
 
-`lw` turns a Linear issue into a Git worktree and prints its path.
+`lw` turns a Linear, GitHub, or Jira issue into a Git worktree and prints its path.
 
 ```sh
 cd "$(lw)"
 ```
 
-It reads Linear, creates or reuses a local worktree, writes small local metadata, and exits.
-It does not start an editor, shell, terminal multiplexer, or coding agent. `lw` is independent
-and is not affiliated with or endorsed by Linear.
+It reads the selected issue provider, creates or reuses a local worktree, writes small local
+metadata, and exits. It does not start an editor, shell, terminal multiplexer, or coding agent.
+`lw` is independent and is not affiliated with or endorsed by Linear, GitHub, or Atlassian.
 
 ## Flagship features
 
-### 1. Turn a Linear issue into an isolated checkout
+### 1. Turn an issue into an isolated checkout
 
 Pick an issue and `lw` creates or reuses a dedicated Git worktree for it:
 
@@ -28,8 +28,8 @@ Worktrees have predictable paths, separate from the repository's main checkout:
 
 ### 2. Find work quickly
 
-The interactive picker searches by issue identifier, team, or text. `Tab` switches between
-issues, projects, and teams, while `Ctrl+P` pins a project or team for faster access. To bypass
+The interactive picker searches the selected provider. Linear also supports team lookup and
+`Tab` browsers for projects and teams, while `Ctrl+P` pins those collections. To bypass
 the picker, provide an issue directly:
 
 ```sh
@@ -40,13 +40,13 @@ cd "$(lw --issue TEAM-123 --branch alex/team-123-fix)"
 
 Before creating a branch, `lw` fetches origin and looks for local or remote branches that
 already contain the ticket identifier. It reuses one clear match, asks when several match,
-and otherwise offers Linear's suggested branch name as editable text. The worktree directory
-stays `TEAM-123` even when the branch is `alex/team-123-fix`.
+and otherwise offers the provider's suggested branch name, or a generated fallback, as editable
+text. The worktree directory identity stays separate from the branch name.
 
 ### 4. Route issues to the right repository
 
-`lw` remembers the repository selected for a Linear project. For issues without a project, it
-can remember a team-level association instead. An explicit repository always takes precedence:
+`lw` remembers the repository selected for a durable provider scope: a Linear project or team,
+a GitHub repository, or a Jira project. An explicit repository always takes precedence:
 
 ```sh
 cd "$(lw --issue TEAM-123 --repo ~/src/api --branch alex/team-123-fix)"
@@ -59,7 +59,7 @@ stderr, so command substitution remains predictable and scripts can consume the 
 
 ### 6. Carry ticket context into the worktree
 
-Every worktree stores small local metadata for its issue. Read it without another Linear request,
+Every worktree stores small local metadata for its issue. Read it without another provider request,
 or add a local summary when the focus changes:
 
 ```sh
@@ -68,7 +68,7 @@ lw context --json
 lw summary "investigate the repository discovery failure"
 ```
 
-These commands update local context only; they never write to Linear.
+These commands update local context only; they never write to an issue provider.
 
 ### 7. Clean up worktrees safely
 
@@ -84,9 +84,9 @@ Dirty worktrees are not force-removed. Automatic pruning is opt-in.
 
 ### 8. Keep credentials and data local
 
-`lw` uses a read-only Linear personal API key and prefers the operating system's credential
-store. It has no hosted service or telemetry and never writes to Linear. Run `lw doctor` to check
-Git, credentials, configuration, and worktree storage without creating a worktree.
+All provider access is read-only. Linear keeps its system-keychain onboarding; GitHub and Jira use
+standard environment variables. `lw` has no hosted service or telemetry and never writes to an
+issue provider. Run `lw doctor` to inspect the active provider configuration.
 
 ## Quick start
 
@@ -184,6 +184,42 @@ Remove a key saved by onboarding with `lw logout`.
 Linear recommends OAuth for hosted applications used by others. `lw` deliberately uses the
 personal-script model: it has no shared backend, and every user controls their own local key.
 
+## Choose an issue provider
+
+Linear remains the default. Select a provider for one run with `--provider`, prefix a direct
+reference, set `LW_ISSUE_PROVIDER`, or put `"issueProvider"` in `config.json`:
+
+```sh
+lw --provider github
+lw --issue 'github:owner/repository#42' --branch alex/gh-42-fix
+lw --provider jira --issue OPS-42 --branch alex/ops-42-fix
+```
+
+GitHub uses `GITHUB_TOKEN` or `GH_TOKEN` when present. Public issues can be read without a token;
+a token enables private repositories and a higher API rate limit. `GITHUB_API_URL` supports GitHub
+Enterprise and `GITHUB_REPOSITORY=owner/repository` supplies context for short references such as
+`#42`.
+
+Jira Cloud requires:
+
+```sh
+export JIRA_BASE_URL="https://example.atlassian.net"
+export JIRA_EMAIL="alex@example.com"
+export JIRA_API_TOKEN="..."
+```
+
+`lw run` removes `LINEAR_API_KEY`, `GITHUB_TOKEN`, `GH_TOKEN`, and `JIRA_API_TOKEN` from the
+launched command's environment. GitHub and Jira credentials are not stored by `lw`.
+
+## Provider interface
+
+The public Go package `github.com/snaylaker/lw/provider` exposes the compile-time `Provider`
+interface and neutral `WorkItem` contract. Provider implementations resolve and search issues;
+they never receive Git or worktree access. The released binary includes Linear, GitHub, and Jira.
+This is not a runtime plugin protocol. A custom binary supplies implementations through
+`lw.Run(args, lw.Options{Providers: []provider.Provider{myProvider}})`; `--provider` then selects
+the implementation by its ID.
+
 ## Find work
 
 Run `lw` for interactive search or pass an exact issue:
@@ -192,9 +228,11 @@ Run `lw` for interactive search or pass an exact issue:
 cd "$(lw)"
 cd "$(lw --issue DEMO-4009 --branch alex/demo-4009-fix)"
 cd "$(lw --issue DEMO-4009 --repo ~/Work/api --branch alex/demo-4009-fix)"
+cd "$(lw --issue 'github:owner/repository#42' --branch alex/gh-42-fix)"
+cd "$(lw --provider jira --issue OPS-42 --branch alex/ops-42-fix)"
 ```
 
-Search behavior:
+Linear search behavior:
 
 | Input | Result |
 | --- | --- |
@@ -202,7 +240,8 @@ Search behavior:
 | `DEMO` | active issues in that team |
 | `timeout` | Linear workspace text search |
 
-`Tab` cycles Issues, Projects, and Teams. `Ctrl+P` pins a project or team. Arrow keys move,
+For Linear, `Tab` cycles Issues, Projects, and Teams and `Ctrl+P` pins a project or team.
+GitHub and Jira use one provider-ranked issue search. Arrow keys move,
 `Enter` selects, `Esc` goes back, `Ctrl+R` reloads, and `Ctrl+C` cancels.
 
 Repository routing remembers the repository selected for a project. Projectless issues use a
@@ -210,7 +249,7 @@ team-level association. An explicit `--repo` always wins.
 
 After choosing the repository, `lw` fetches origin and searches local and remote branches for
 the ticket identifier. One match is reused; several open a branch picker. With no match, the
-interactive flow selects Linear's suggested name so typing immediately replaces it; use an
+interactive flow selects the provider suggestion or generated fallback so typing immediately replaces it; use an
 arrow key first to keep and edit the suggestion. Direct `--issue` mode requires
 `--branch` before creating a branch unless that repository has a configured template:
 
@@ -228,8 +267,8 @@ lw branches unset-rule
 ```
 
 Run these inside the repository, or add `--repo ~/Work/api`. `--username` updates the shared
-explicit username variable. `preview` resolves the issue from Linear, expands every placeholder,
-and asks Git to validate the resulting branch name.
+explicit username variable. `preview` accepts `--provider` or a prefixed reference, resolves the
+issue, expands every placeholder, and asks Git to validate the resulting branch name.
 
 ## Commands
 
@@ -237,6 +276,7 @@ and asks Git to validate the resulting branch name.
 | --- | --- |
 | `lw` | select an issue and create or reuse its worktree |
 | `lw --issue TEAM-123 --branch <name>` | skip the issue picker and name a new branch |
+| `lw --provider github` / `jira` | search another built-in provider |
 | `lw doctor` | inspect Git, credentials, configuration, and worktree storage |
 | `lw branches set-rule <template>` | save the current repository's naming rule |
 | `lw branches show-rule` | show the current repository's rule |
@@ -255,12 +295,12 @@ use stderr, so command substitution remains safe.
 ## Coding agents
 
 Every `lw` worktree carries local issue metadata. `lw context` exposes it without contacting
-Linear:
+the provider:
 
 ```text
 Ticket: ENG-3971 - Improve command completion output
 https://linear.app/acme/issue/ENG-3971
-This context is read-only; it never writes to Linear.
+This context is read-only; it never writes to the issue provider.
 ```
 
 Use the agent-specific setup in [the integration guide](docs/agent-integrations.md):
@@ -283,6 +323,7 @@ directory. A minimal example:
 
 ```json
 {
+  "issueProvider": "linear",
   "worktreeRoot": "~/.lw/worktrees",
   "credentialCommand": "op read op://private/linear/api-key",
   "repos": { "roots": ["~/Work"] },
@@ -300,7 +341,8 @@ directory. A minimal example:
 
 Branch rules are keyed by the normalized origin (`host/path`). For a local-only repository,
 you can use its absolute checkout path as the key. Templates support `{username}`, `{ticket}`,
-`{ticket_lower}`, `{slug}`, and `{linear_branch}`. They are expanded as data and never run as
+`{ticket_lower}`, `{slug}`, `{suggested_branch}`, and the backward-compatible
+`{linear_branch}` alias. They are expanded as data and never run as
 shell commands. The `branches` commands identify the repository from its normalized origin and
 fall back to its absolute path when it has no origin.
 
@@ -309,6 +351,9 @@ Each created worktree has an `lw.json` in its private Git directory, not in the 
 ```json
 {
   "identifier": "ENG-3971",
+  "provider": "linear",
+  "externalId": "issue-uuid",
+  "reference": "ENG-3971",
   "title": "Improve command completion output",
   "url": "https://linear.app/acme/issue/ENG-3971",
   "team": "ENG",
@@ -317,9 +362,9 @@ Each created worktree has an `lw.json` in its private Git directory, not in the 
 }
 ```
 
-`lw` has no telemetry or hosted service. Network requests go to Linear's documented GraphQL
-endpoint, the selected repository's `origin` during branch resolution, and GitHub during
-installation. Git children do not inherit `LINEAR_API_KEY`.
+`lw` has no telemetry or hosted service. Network requests go only to the selected issue provider,
+the selected repository's `origin` during branch resolution, and GitHub during installation.
+Git children and launched commands do not inherit provider API tokens.
 
 ## Documentation
 

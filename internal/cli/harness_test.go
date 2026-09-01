@@ -18,6 +18,7 @@ import (
 	"github.com/snaylaker/lw/internal/domain"
 	"github.com/snaylaker/lw/internal/gitrepo"
 	"github.com/snaylaker/lw/internal/tui"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 // The clock every test runs on, so a recents timestamp is a value and not a race.
@@ -101,6 +102,7 @@ type harness struct {
 	vault      *fakeVault
 	gitRun     gitrepo.Runner
 	child      ChildRunner
+	providers  []issueprovider.Provider
 }
 
 func newHarness(t *testing.T) *harness {
@@ -179,6 +181,7 @@ func (h *harness) deps() Deps {
 		Now:        func() time.Time { return testNow },
 		Launch:     h.launchLauncher,
 		Child:      h.child,
+		Providers:  h.providers,
 	}
 }
 
@@ -238,7 +241,10 @@ type fakeDoer struct {
 }
 
 func (d *fakeDoer) Do(req *http.Request) (*http.Response, error) {
-	body, _ := io.ReadAll(req.Body)
+	var body []byte
+	if req.Body != nil {
+		body, _ = io.ReadAll(req.Body)
+	}
 	d.mu.Lock()
 	d.calls++
 	d.bodies = append(d.bodies, string(body))

@@ -29,7 +29,7 @@ func (v *branchLoadingView) Update(tea.Msg) tea.Cmd { return nil }
 func (v *branchLoadingView) Destroy()               {}
 func (v *branchLoadingView) SetWidth(int)           {}
 func (v *branchLoadingView) View() string {
-	return styleForeground.Copy().Bold(true).Render("Resolve a branch for "+v.issue.Identifier) + "\n\n" +
+	return styleForeground.Copy().Bold(true).Render("Resolve a branch for "+v.issue.DisplayReference()) + "\n\n" +
 		styleMuted.Render("Fetching and checking branches in "+v.repo.Name+"…")
 }
 
@@ -69,7 +69,7 @@ func (p *BranchPicker) SetWidth(width int)         { p.list.SetWidth(width) }
 func (p *BranchPicker) FocusInput() tea.Cmd        { return p.list.FocusInput() }
 func (p *BranchPicker) View() string {
 	return strings.Join([]string{
-		styleForeground.Copy().Bold(true).Render("Choose a branch for " + p.issue.Identifier),
+		styleForeground.Copy().Bold(true).Render("Choose a branch for " + p.issue.DisplayReference()),
 		styleMuted.Render("Several existing branches contain this ticket."),
 		styleMuted.Render("type to search · ↑/↓ move · Enter select · Esc back"),
 		"",
@@ -115,9 +115,9 @@ func (p *BranchInput) Destroy()     {}
 func (p *BranchInput) SetWidth(int) {}
 func (p *BranchInput) View() string {
 	lines := []string{
-		styleForeground.Copy().Bold(true).Render("Name the branch for " + p.issue.Identifier),
+		styleForeground.Copy().Bold(true).Render("Name the branch for " + p.issue.DisplayReference()),
 		styleMuted.Render("Repo: " + p.repo.Name + " — " + p.repo.Root),
-		styleMuted.Render("Linear's suggestion is selected. Type to replace it, or use ←/→ to edit."),
+		styleMuted.Render("The provider suggestion is selected. Type to replace it, or use ←/→ to edit."),
 		styleMuted.Render("Ctrl+U clear · Enter continue · Esc back"),
 		"",
 		styleFocus.Render("❯ ") + p.input.View(),

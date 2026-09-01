@@ -32,9 +32,9 @@ type Runner func(ctx context.Context, dir, name string, args []string) (ExecResu
 func DefaultRunner(ctx context.Context, dir, name string, args []string) (ExecResult, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
-	// A key supplied through LINEAR_API_KEY belongs to lw, not to git, hooks,
-	// filters or any other process git may start.
-	cmd.Env = withoutLinearKey(os.Environ())
+	// Provider tokens belong to lw, not to git, hooks, filters or any other
+	// process git may start.
+	cmd.Env = withoutProviderSecrets(os.Environ())
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -51,11 +51,17 @@ func DefaultRunner(ctx context.Context, dir, name string, args []string) (ExecRe
 	return ExecResult{}, err
 }
 
-func withoutLinearKey(environ []string) []string {
+func withoutProviderSecrets(environ []string) []string {
 	result := make([]string, 0, len(environ))
 	for _, entry := range environ {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(name, "LINEAR_API_KEY") {
+		for _, secret := range []string{"LINEAR_API_KEY", "GITHUB_TOKEN", "GH_TOKEN", "JIRA_API_TOKEN"} {
+			if strings.EqualFold(name, secret) {
+				name = ""
+				break
+			}
+		}
+		if name == "" {
 			continue
 		}
 		result = append(result, entry)

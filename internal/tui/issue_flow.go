@@ -15,7 +15,9 @@ func (m *Launcher) openIssues() tea.Cmd {
 	m.returnToTeamIssues = false
 	m.screen = ScreenIssues
 	picker := NewIssuePicker(IssuePickerOptions{
-		OnSelect: func(issue domain.Issue) { m.enqueue(m.chooseIssue(issue)) },
+		OnSelect:          func(issue domain.Issue) { m.enqueue(m.chooseIssue(issue)) },
+		ProviderName:      m.deps.ProviderName,
+		BrowseCollections: m.deps.BrowseCollections,
 	})
 	m.show(picker)
 	m.issuePicker = picker
@@ -52,7 +54,7 @@ func (m *Launcher) searchIssues(query string) tea.Cmd {
 	return func() tea.Msg {
 		if search == nil {
 			return issuesLoadedMsg{token: token, query: query, err: lwerr.New(
-				lwerr.Internal, "Linear issue search is unavailable.", "report this: it is a bug in lw")}
+				lwerr.Internal, "Issue search is unavailable.", "report this: it is a bug in lw")}
 		}
 		items, err := search(ctx, query)
 		return issuesLoadedMsg{token: token, query: query, items: items, err: err}

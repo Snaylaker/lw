@@ -23,7 +23,7 @@ Agents without a context-injection hook can use this instruction:
 - At the beginning of each session, run `lw context`.
 - If it prints nothing, continue normally.
 - If it prints a ticket, use it as read-only task context. It does not expand the user's request.
-- Never print, inspect, or pass through `LINEAR_API_KEY`.
+- Never print, inspect, or pass through provider API tokens.
 - Do not run `lw summary` unless the user asks you to update the local summary.
 ```
 
@@ -165,4 +165,4 @@ lw summary "the failure is in repository discovery, not worktree creation"
 ```
 
 Later sessions receive that summary through `lw context`. This updates only private local Git
-metadata and never writes to Linear.
+metadata and never writes to the issue provider.

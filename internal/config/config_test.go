@@ -350,6 +350,19 @@ func TestBranchNamingRulesAreRepositoryScopedAndSanitized(t *testing.T) {
 	}
 }
 
+func TestReadStoredConfigAcceptsSafeIssueProviderIDs(t *testing.T) {
+	for _, provider := range []string{"linear", "github", "jira", "company_tickets"} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		if err := os.WriteFile(path, []byte(`{"issueProvider":"`+provider+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stored, err := ReadStoredConfig(path)
+		if err != nil || stored.IssueProvider != provider {
+			t.Fatalf("provider %q: stored = %+v, err = %v", provider, stored, err)
+		}
+	}
+}
+
 func TestSetAndUnsetBranchRulePreserveOtherConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := Write(&StoredConfig{WorktreeRoot: "~/worktrees", PruneMerged: true}, path); err != nil {

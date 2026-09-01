@@ -13,6 +13,16 @@ var testIssues = []domain.Issue{
 	{ID: "issue-2", Identifier: "DEMO-4007", Title: "Repository scan timeout", StateType: "triage", StateName: "Triage", TeamID: "team-demo", TeamKey: "DEMO", TeamName: "Developer Experience"},
 }
 
+func TestIssuePickerUsesProviderLanguageAndCanHideLinearCollections(t *testing.T) {
+	picker := NewIssuePicker(IssuePickerOptions{ProviderName: "GitHub"})
+	picker.SetSearching()
+	frame := picker.View()
+	mustContain(t, frame, "Find a GitHub issue")
+	mustContain(t, frame, "searching GitHub")
+	mustNotContain(t, frame, "projects")
+	mustNotContain(t, frame, "teams")
+}
+
 func TestIssuePickerStartsAsOneWorkspaceSearchInput(t *testing.T) {
 	picker := NewIssuePicker(IssuePickerOptions{})
 	if picker.Breadcrumb() != "Find a Linear issue" {

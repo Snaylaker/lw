@@ -16,8 +16,12 @@ import (
 	"github.com/snaylaker/lw/internal/gitrepo"
 	"github.com/snaylaker/lw/internal/linear"
 	"github.com/snaylaker/lw/internal/lwerr"
+	"github.com/snaylaker/lw/internal/providers"
+	jiraprovider "github.com/snaylaker/lw/internal/providers/jira"
+	linearprovider "github.com/snaylaker/lw/internal/providers/linear"
 	"github.com/snaylaker/lw/internal/tui"
 	"github.com/snaylaker/lw/internal/worktree"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 // runFlow is `lw`: SPEC §3, in order. The repository first, so a bad invocation
@@ -52,6 +56,8 @@ type flow struct {
 
 	stored              *config.StoredConfig
 	configPath          string
+	providerID          issueprovider.ID
+	source              issueprovider.Provider
 	credential          domain.Credential
 	needsCredential     bool
 	validatedCredential *[sha256.Size]byte
@@ -94,36 +100,62 @@ func newFlow(ctx context.Context, opts Options, env *execEnv) (*flow, error) {
 		return nil, err
 	}
 
-	// 2. Existing credentials are resolved here. A genuinely missing key is not
-	//    an error for an interactive run: the launcher completes onboarding.
-	resolved, err := credential.Resolve(ctx, credential.Options{
-		Env:        env.env,
-		Platform:   env.platform,
-		Command:    storedCredentialCommand(stored),
-		ConfigPath: configPath,
-		Run:        env.credential,
-		Vault:      env.vault,
-	})
-	needsCredential := false
+	providerID, err := selectedProvider(opts, stored, env.env, env.providers)
 	if err != nil {
-		if !errors.Is(err, credential.ErrNotFound) || opts.Issue != "" {
-			return nil, err
+		return nil, err
+	}
+	if _, reference, ok := prefixedProviderReference(opts.Issue); ok {
+		opts.Issue = reference
+	}
+	if opts.Issue != "" {
+		var referenceErr error
+		switch providerID {
+		case issueprovider.Linear:
+			referenceErr = (linearprovider.Client{}).ValidateReference(opts.Issue)
+		case issueprovider.Jira:
+			referenceErr = jiraprovider.ValidateReference(opts.Issue)
 		}
-		needsCredential = true
+		if referenceErr != nil {
+			return nil, usagef("--issue is not valid for %s: %s", providerDisplayName(providerID, env.providers), referenceErr)
+		}
+	}
+
+	// 2. Linear preserves its interactive key onboarding. GitHub and Jira use
+	//    their standard environment variables and are ready immediately.
+	var resolved credential.Resolved
+	needsCredential := false
+	if providerID == issueprovider.Linear {
+		resolved, err = credential.Resolve(ctx, credential.Options{
+			Env:        env.env,
+			Platform:   env.platform,
+			Command:    storedCredentialCommand(stored),
+			ConfigPath: configPath,
+			Run:        env.credential,
+			Vault:      env.vault,
+		})
+		if err != nil {
+			if !errors.Is(err, credential.ErrNotFound) || opts.Issue != "" {
+				return nil, err
+			}
+			needsCredential = true
+		}
 	}
 
 	f := &flow{
-		opts:            opts,
-		env:             env,
-		repo:            hereRepo,
-		flagRepo:        flagRepo,
-		stored:          stored,
-		configPath:      configPath,
-		credential:      resolved.Credential,
-		needsCredential: needsCredential,
+		opts: opts, env: env, repo: hereRepo, flagRepo: flagRepo,
+		stored: stored, configPath: configPath, providerID: providerID,
+		credential: resolved.Credential, needsCredential: needsCredential,
 	}
 	if !needsCredential {
-		f.activateCredential(resolved.Credential)
+		f.source, err = buildProvider(ctx, providerID, resolved.Credential, preferredRepo(flagRepo, hereRepo), env)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if opts.Issue != "" {
+		if err := f.source.ValidateReference(opts.Issue); err != nil {
+			return nil, usagef("--issue is not valid for %s: %s", f.source.DisplayName(), err)
+		}
 	}
 	return f, nil
 }
@@ -136,14 +168,11 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 	// is needed. An explicit/current repository still wins; outside one, the
 	// issue's remembered project or team association can now resolve it.
 	if f.opts.Issue != "" {
-		issue, err := linear.ResolveIssue(ctx, linear.ResolveIssueRequest{
-			Credential: f.credential,
-			Identifier: f.opts.Issue,
-			HTTPClient: f.env.http,
-		})
+		item, err := f.source.Resolve(ctx, f.opts.Issue)
 		if err != nil {
 			return nil, Report(err, f.env.stderr)
 		}
+		issue := providers.ToDomain(item)
 		repo := firstRepo(f.flagRepo, f.repo)
 		if repo == nil {
 			if remembered, ok := f.repoForIssue(ctx, issue); ok {
@@ -171,6 +200,8 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 	}
 
 	deps := tui.LauncherDeps{
+		ProviderName:      providerDisplayName(f.providerID, f.env.providers),
+		BrowseCollections: f.providerID == issueprovider.Linear,
 		NeedsRepoRoot:     len(config.RepoRoots(f.stored, f.env.env)) == 0,
 		SuggestedRepoRoot: f.suggestedRepoRoot(),
 		ListRepos: func() []tui.RankedRepo {
@@ -179,17 +210,9 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 		SetRepoRoot: func(root string) ([]tui.RankedRepo, error) {
 			return f.setRepoRoot(ctx, root)
 		},
-		SearchIssues:      f.searchIssues,
-		ListProjects:      f.listProjects,
-		ListProjectIssues: f.listProjectIssues,
-		ProjectPins:       config.PinnedProjects(f.stored),
-		ToggleProjectPin:  f.toggleProjectPin,
-		ListTeams:         f.listTeams,
-		ListTeamIssues:    f.listTeamIssues,
-		TeamPins:          config.PinnedTeams(f.stored),
-		ToggleTeamPin:     f.toggleTeamPin,
-		ExecuteFlow:       f.execute,
-		PreselectRepo:     f.flagRepo,
+		SearchIssues:  f.searchIssues,
+		ExecuteFlow:   f.execute,
+		PreselectRepo: f.flagRepo,
 		RepoForIssue: func(issue domain.Issue) (domain.Repo, bool) {
 			return f.repoForIssue(ctx, issue)
 		},
@@ -197,6 +220,16 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 		ResolveBranch:     f.resolveBranch,
 		ChooseBranch:      f.chooseBranch,
 		ExecuteBranchFlow: f.executeBranch,
+	}
+	if f.providerID == issueprovider.Linear {
+		deps.ListProjects = f.listProjects
+		deps.ListProjectIssues = f.listProjectIssues
+		deps.ProjectPins = config.PinnedProjects(f.stored)
+		deps.ToggleProjectPin = f.toggleProjectPin
+		deps.ListTeams = f.listTeams
+		deps.ListTeamIssues = f.listTeamIssues
+		deps.TeamPins = config.PinnedTeams(f.stored)
+		deps.ToggleTeamPin = f.toggleTeamPin
 	}
 	if f.needsCredential {
 		deps.Credential = &tui.CredentialSetup{
@@ -271,11 +304,11 @@ func requireResolvedBranch(issue domain.Issue, resolution domain.BranchResolutio
 			names = append(names, candidate.Name)
 		}
 		return domain.Branch{}, lwerr.New(lwerr.WorktreeConflict,
-			"several branches match "+issue.Identifier+": "+strings.Join(names, ", "),
+			"several branches match "+issue.DisplayReference()+": "+strings.Join(names, ", "),
 			"re-run with --branch <name>")
 	}
 	return domain.Branch{}, lwerr.New(lwerr.WorktreeConflict,
-		"no existing branch matches "+issue.Identifier,
+		"no existing branch matches "+issue.DisplayReference(),
 		"re-run with --branch <name>, or configure branchNaming for this repository")
 }
 
@@ -322,6 +355,7 @@ func (f *flow) setCredential(ctx context.Context, key string, target credential.
 
 func (f *flow) activateCredential(value domain.Credential) {
 	f.credential = value
+	f.source = linearprovider.Client{Credential: value, HTTPClient: f.env.http}
 }
 
 func (f *flow) suggestedRepoRoot() string {
@@ -411,11 +445,11 @@ func (f *flow) recordRepoUse(issue domain.Issue, repo domain.Repo) {
 }
 
 func (f *flow) searchIssues(ctx context.Context, query string) ([]domain.Issue, error) {
-	return linear.FindIssues(ctx, linear.FindIssuesRequest{
-		Credential: f.credential,
-		Query:      query,
-		HTTPClient: f.env.http,
-	})
+	items, err := f.source.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return providers.ToDomains(items), nil
 }
 
 func (f *flow) listProjects(ctx context.Context) ([]domain.Project, error) {

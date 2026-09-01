@@ -10,18 +10,19 @@ import (
 
 type Kind string
 
-// The seven kinds of SPEC §10, and no others. There is deliberately no
+// The kinds of SPEC §10, and no others. There is deliberately no
 // "auth_expired": an API key has no expiry, so a key Linear refuses is revoked
 // or under-scoped, which is the same situation as having no key at all —
 // auth_required, with a next action that says to make a new one.
 const (
-	AuthRequired      Kind = "auth_required"
-	LinearUnavailable Kind = "linear_unavailable"
-	NotARepo          Kind = "not_a_repo"
-	ConfigInvalid     Kind = "config_invalid"
-	WorktreeConflict  Kind = "worktree_conflict"
-	Cancelled         Kind = "cancelled"
-	Internal          Kind = "internal"
+	AuthRequired        Kind = "auth_required"
+	LinearUnavailable   Kind = "linear_unavailable"
+	ProviderUnavailable Kind = "provider_unavailable"
+	NotARepo            Kind = "not_a_repo"
+	ConfigInvalid       Kind = "config_invalid"
+	WorktreeConflict    Kind = "worktree_conflict"
+	Cancelled           Kind = "cancelled"
+	Internal            Kind = "internal"
 )
 
 // Kinds is every kind, in the order SPEC §10 lists them. It exists so the set
@@ -30,6 +31,7 @@ const (
 var Kinds = []Kind{
 	AuthRequired,
 	LinearUnavailable,
+	ProviderUnavailable,
 	NotARepo,
 	ConfigInvalid,
 	WorktreeConflict,

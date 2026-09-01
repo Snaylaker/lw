@@ -18,9 +18,11 @@ type CredentialSetup struct {
 }
 
 // LauncherDeps is every side effect the launcher screens need. The model owns
-// only sequencing; Linear, config and git remain behind injected functions.
+// only sequencing; providers, config and git remain behind injected functions.
 type LauncherDeps struct {
-	Credential *CredentialSetup
+	Credential        *CredentialSetup
+	ProviderName      string
+	BrowseCollections bool
 	// Repo is the repository the user is standing in, if any. It is offered as
 	// the first row, not silently assumed by the interactive flow.
 	Repo          domain.Repo
@@ -31,8 +33,8 @@ type LauncherDeps struct {
 	ListRepos         func() []RankedRepo
 	SetRepoRoot       func(string) ([]RankedRepo, error)
 
-	// SearchIssues searches the whole Linear workspace. RepoForIssue uses the
-	// issue's project association, or its team association when projectless.
+	// SearchIssues searches the selected provider. RepoForIssue uses the
+	// issue's durable provider scope association when one exists.
 	SearchIssues      func(context.Context, string) ([]domain.Issue, error)
 	ListProjects      func(context.Context) ([]domain.Project, error)
 	ListProjectIssues func(context.Context, domain.Project) ([]domain.Issue, error)
@@ -362,7 +364,7 @@ func (m *Launcher) handleFailure(err error, retry func() tea.Cmd) {
 func (m *Launcher) showError(err *lwerr.Error, retry func() tea.Cmd) {
 	m.screen = ScreenError
 	m.retryAction = nil
-	if err.Kind == lwerr.LinearUnavailable {
+	if err.Kind == lwerr.LinearUnavailable || err.Kind == lwerr.ProviderUnavailable {
 		m.retryAction = retry
 	}
 	m.show(NewErrorView(ErrorViewOptions{Error: err, Retryable: m.retryAction != nil}))
@@ -390,7 +392,7 @@ func (m *Launcher) onKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 		return true, nil
 	}
 
-	if key.name == "tab" && !key.ctrl && !key.alt {
+	if key.name == "tab" && !key.ctrl && !key.alt && (m.deps.BrowseCollections || m.deps.ProviderName == "") {
 		switch m.screen {
 		case ScreenIssues:
 			m.abortLoad()

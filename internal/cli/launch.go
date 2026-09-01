@@ -84,13 +84,13 @@ func runChild(dir string, argv, environ []string, stdin io.Reader, stdout, stder
 	return -1, err
 }
 
-// childEnvironment preserves the user's environment except for the Linear key.
-// The launched agent can run `lw context` from its working directory, but it
-// does not need the credential lw used to reach Linear.
+// childEnvironment preserves the user's environment except for provider
+// credentials. The launched command can read local lw context but does not need
+// the secret lw used to reach the issue service.
 func childEnvironment(env map[string]string) []string {
 	keys := make([]string, 0, len(env))
 	for key := range env {
-		if !strings.EqualFold(key, credential.EnvVar) {
+		if !providerSecret(key) {
 			keys = append(keys, key)
 		}
 	}
@@ -101,4 +101,13 @@ func childEnvironment(env map[string]string) []string {
 		result = append(result, key+"="+env[key])
 	}
 	return result
+}
+
+func providerSecret(key string) bool {
+	for _, secret := range []string{credential.EnvVar, "GITHUB_TOKEN", "GH_TOKEN", "JIRA_API_TOKEN"} {
+		if strings.EqualFold(key, secret) {
+			return true
+		}
+	}
+	return false
 }

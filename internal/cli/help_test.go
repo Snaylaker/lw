@@ -55,7 +55,7 @@ func TestHelpTextExplainsCredentialOnboardingAndAdvancedSources(t *testing.T) {
 }
 
 func TestHelpTextExplainsDirectAgentLaunching(t *testing.T) {
-	for _, literal := range []string{"lw run -- claude", "without a shell", "LINEAR_API_KEY is removed"} {
+	for _, literal := range []string{"lw run -- claude", "without a shell", "Provider API tokens are removed"} {
 		if !strings.Contains(HelpText(), literal) {
 			t.Errorf("help text is missing %q", literal)
 		}

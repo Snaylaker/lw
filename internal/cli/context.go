@@ -9,8 +9,8 @@ import (
 )
 
 // readOnlyNotice ends every plain-text context. It is the whole promise of the
-// integration surface: reading a worktree's ticket never writes to Linear.
-const readOnlyNotice = "This context is read-only; it never writes to Linear."
+// integration surface: reading a worktree's ticket never writes to its provider.
+const readOnlyNotice = "This context is read-only; it never writes to the issue provider."
 
 // runContext is `lw context [--json]` (SPEC §9).
 //
@@ -44,7 +44,11 @@ func runContext(ctx context.Context, opts Options, env *execEnv) int {
 		return 0
 	}
 
-	fmt.Fprintf(env.stdout, "Ticket: %s — %s\n", metadata.Identifier, metadata.Title)
+	reference := metadata.Reference
+	if reference == "" {
+		reference = metadata.Identifier
+	}
+	fmt.Fprintf(env.stdout, "Ticket: %s — %s\n", reference, metadata.Title)
 	fmt.Fprintln(env.stdout, metadata.URL)
 	if metadata.Summary != "" {
 		fmt.Fprintf(env.stdout, "Summary: %s\n", metadata.Summary)

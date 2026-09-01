@@ -21,10 +21,11 @@ import (
 	"github.com/snaylaker/lw/internal/linear"
 	"github.com/snaylaker/lw/internal/lwerr"
 	"github.com/snaylaker/lw/internal/tui"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
-// httpTimeout bounds one Linear request. A hung connection has to become
-// "Linear is unreachable" rather than a picker that never paints.
+// httpTimeout bounds one provider request. A hung connection must become an
+// actionable error rather than a picker that never paints.
 const httpTimeout = 30 * time.Second
 
 // Deps is every seam the CLI has. A zero value means "the real thing", so
@@ -43,6 +44,7 @@ type Deps struct {
 	Now        func() time.Time
 	Launch     func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) // nil means tui.RunLauncher
 	Child      ChildRunner                                              // nil means a direct child process
+	Providers  []issueprovider.Provider                                 // optional compile-time provider extensions
 }
 
 // Main is the production entry point: the process's own argv, environment and
@@ -124,9 +126,16 @@ type execEnv struct {
 	now        func() time.Time
 	launch     func(deps tui.LauncherDeps) (tui.LauncherOutcome, error)
 	child      ChildRunner
+	providers  map[issueprovider.ID]issueprovider.Provider
 }
 
 func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
+	providers := make(map[issueprovider.ID]issueprovider.Provider, len(deps.Providers))
+	for _, candidate := range deps.Providers {
+		if candidate != nil && candidate.ID() != "" {
+			providers[candidate.ID()] = candidate
+		}
+	}
 	env := &execEnv{
 		stdin:      readerOr(deps.Stdin, os.Stdin),
 		stdout:     writerOr(deps.Stdout, os.Stdout),
@@ -141,6 +150,7 @@ func newExecEnv(deps Deps) (*execEnv, *lwerr.Error) {
 		now:        deps.Now,
 		launch:     deps.Launch,
 		child:      deps.Child,
+		providers:  providers,
 	}
 	if env.env == nil {
 		env.env = config.OSEnv()

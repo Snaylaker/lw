@@ -30,6 +30,9 @@ const MetadataFileName = "lw.json"
 // by Identifier.
 type Metadata struct {
 	Identifier string `json:"identifier"`
+	Provider   string `json:"provider"`
+	ExternalID string `json:"externalId"`
+	Reference  string `json:"reference"`
 	Title      string `json:"title"`
 	URL        string `json:"url"`
 	Team       string `json:"team"`
@@ -47,6 +50,9 @@ func MetadataOf(issue domain.Issue, selectedBranch ...string) Metadata {
 	}
 	return Metadata{
 		Identifier: issue.Identifier,
+		Provider:   issue.Provider,
+		ExternalID: issue.ExternalID,
+		Reference:  issue.DisplayReference(),
 		Title:      issue.Title,
 		URL:        issue.URL,
 		Team:       issue.TeamKey,

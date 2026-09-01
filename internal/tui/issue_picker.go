@@ -12,40 +12,51 @@ import (
 
 const issueSearchDebounce = 450 * time.Millisecond
 
-// Two characters avoid spending Linear's search rate limit on a single key and
-// still allow a team key such as DEMO to be the complete query.
+// Two characters avoid spending a provider's search rate limit on a single key
+// and still allow a Linear team key such as DEMO to be the complete query.
 func searchQueryReady(query string) bool {
 	return utf8.RuneCountInString(strings.TrimSpace(query)) >= 2
 }
 
 type IssuePickerOptions struct {
-	OnSelect func(domain.Issue)
+	OnSelect          func(domain.Issue)
+	ProviderName      string
+	BrowseCollections bool
 	// Local turns the picker into a project issue browser: rows are loaded once
 	// and typing filters them locally rather than starting workspace searches.
 	Local bool
 	Title string
 }
 
-// IssuePicker searches every visible active issue in the workspace. Linear
-// ranks the results; the list therefore displays server order without applying
-// another local text filter.
+// IssuePicker displays provider-ranked search results without applying another
+// local text filter.
 type IssuePicker struct {
-	list       *SearchableList
-	local      bool
-	title      string
-	issuesByID map[string]domain.Issue
-	rows       []SearchableItem
-	painted    bool
-	status     string
-	generation int
+	list              *SearchableList
+	local             bool
+	title             string
+	issuesByID        map[string]domain.Issue
+	rows              []SearchableItem
+	painted           bool
+	status            string
+	providerName      string
+	browseCollections bool
+	generation        int
 }
 
 func NewIssuePicker(options IssuePickerOptions) *IssuePicker {
+	providerName := strings.TrimSpace(options.ProviderName)
+	if providerName == "" {
+		providerName = "Linear"
+	}
 	title := options.Title
 	if title == "" {
-		title = "Find a Linear issue"
+		title = "Find a " + providerName + " issue"
 	}
-	picker := &IssuePicker{issuesByID: map[string]domain.Issue{}, local: options.Local, title: title}
+	picker := &IssuePicker{
+		issuesByID: map[string]domain.Issue{}, local: options.Local, title: title,
+		providerName:      providerName,
+		browseCollections: options.BrowseCollections || options.ProviderName == "" || options.Local,
+	}
 	filter := FilterFunc(func(_ string, items []SearchableItem) []SearchableItem {
 		return append([]SearchableItem(nil), items...)
 	})
@@ -55,9 +66,9 @@ func NewIssuePicker(options IssuePickerOptions) *IssuePicker {
 	picker.list = NewSearchableList(SearchableListOptions{
 		Placeholder: "issue identifier or title",
 		EmptyText:   "type at least 2 characters",
-		LoadingText: "searching Linear…",
-		// Search results may be semantic matches whose title does not literally
-		// contain the query. Preserve Linear's relevance ranking verbatim.
+		LoadingText: "searching " + providerName + "…",
+		// Results may be semantic matches whose title does not literally contain
+		// the query. Preserve the provider's relevance ranking verbatim.
 		Filter: filter,
 		OnSelect: func(item SearchableItem) {
 			if issue, ok := picker.issuesByID[item.ID]; ok && options.OnSelect != nil {
@@ -101,7 +112,7 @@ func (p *IssuePicker) SetIssues(issues []domain.Issue) {
 		}
 		rows = append(rows, SearchableItem{
 			ID:    issue.ID,
-			Label: issue.Identifier + " " + TruncateGraphemes(issue.Title, 80),
+			Label: issue.DisplayReference() + " " + TruncateGraphemes(issue.Title, 80),
 			Hint:  hint,
 		})
 	}
@@ -166,13 +177,15 @@ func (p *IssuePicker) View() string {
 		actions[2].label = "reload"
 		actions[3].label = "back"
 	}
-	lines := []string{
-		styleForeground.Copy().Bold(true).Render(p.title),
-		browserTabs(browserIssues),
+	lines := []string{styleForeground.Copy().Bold(true).Render(p.title)}
+	if p.browseCollections {
+		lines = append(lines, browserTabs(browserIssues))
+	}
+	lines = append(lines,
 		shortcutLine(actions...),
 		styleMuted.Render(p.status),
 		"",
 		p.list.View(),
-	}
+	)
 	return strings.Join(lines, "\n")
 }

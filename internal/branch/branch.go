@@ -1,4 +1,4 @@
-// Package branch resolves the git branch for a Linear issue before a worktree
+// Package branch resolves the git branch for an issue before a worktree
 // is created. It inspects refs and expands safe templates; it never executes a
 // configured command.
 package branch
@@ -27,8 +27,8 @@ type Options struct {
 }
 
 // Resolve refreshes origin when present, inspects local and remote-tracking
-// refs, then applies the resolution order: explicit name, existing ticket
-// branch, configured template, editable Linear suggestion.
+// refs, then applies the resolution order: explicit name, existing issue
+// branch, configured template, editable provider suggestion.
 func Resolve(ctx context.Context, options Options) (domain.BranchResolution, error) {
 	run := options.Run
 	if run == nil {
@@ -50,7 +50,8 @@ func Resolve(ctx context.Context, options Options) (domain.BranchResolution, err
 		return selectedResolution(selected), nil
 	}
 
-	matches := matchingBranches(refs, options.Issue.Identifier)
+	keys := append([]string{options.Issue.Identifier}, options.Issue.BranchKeys...)
+	matches := matchingBranches(refs, keys)
 	switch len(matches) {
 	case 1:
 		return selectedResolution(matches[0]), nil
@@ -151,15 +152,15 @@ func listRefs(ctx context.Context, repo domain.Repo, run gitrepo.Runner) (refs, 
 	return found, nil
 }
 
-func matchingBranches(found refs, identifier string) []domain.Branch {
+func matchingBranches(found refs, identifiers []string) []domain.Branch {
 	names := map[string]bool{}
 	for name := range found.local {
-		if containsIdentifier(name, identifier) {
+		if containsAnyIdentifier(name, identifiers) {
 			names[name] = true
 		}
 	}
 	for name := range found.remote {
-		if containsIdentifier(name, identifier) {
+		if containsAnyIdentifier(name, identifiers) {
 			names[name] = true
 		}
 	}
@@ -173,6 +174,15 @@ func matchingBranches(found refs, identifier string) []domain.Branch {
 		result = append(result, branchFromRefs(name, found))
 	}
 	return result
+}
+
+func containsAnyIdentifier(branchName string, identifiers []string) bool {
+	for _, identifier := range identifiers {
+		if strings.TrimSpace(identifier) != "" && containsIdentifier(branchName, identifier) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsIdentifier(branchName, identifier string) bool {
@@ -237,7 +247,7 @@ var placeholderRE = regexp.MustCompile(`\{[a-z_]+\}`)
 
 var knownPlaceholders = map[string]bool{
 	"{username}": true, "{ticket}": true, "{ticket_lower}": true,
-	"{slug}": true, "{linear_branch}": true,
+	"{slug}": true, "{linear_branch}": true, "{suggested_branch}": true,
 }
 
 // ValidateTemplate checks the template language without needing a Linear
@@ -253,13 +263,13 @@ func ValidateTemplate(template string) error {
 		if !knownPlaceholders[placeholder] {
 			return lwerr.New(lwerr.ConfigInvalid,
 				"branch template uses unknown placeholder "+placeholder,
-				"use {username}, {ticket}, {ticket_lower}, {slug}, or {linear_branch}")
+				"use {username}, {ticket}, {ticket_lower}, {slug}, {suggested_branch}, or {linear_branch}")
 		}
 	}
 	if strings.ContainsAny(placeholderRE.ReplaceAllString(template, ""), "{}") {
 		return lwerr.New(lwerr.ConfigInvalid,
 			"branch template contains an invalid placeholder",
-			"use {username}, {ticket}, {ticket_lower}, {slug}, or {linear_branch}")
+			"use {username}, {ticket}, {ticket_lower}, {slug}, {suggested_branch}, or {linear_branch}")
 	}
 	return nil
 }
@@ -271,11 +281,12 @@ func Expand(template string, issue domain.Issue, username string) (string, error
 		return "", err
 	}
 	values := map[string]string{
-		"{username}":      strings.TrimSpace(username),
-		"{ticket}":        issue.Identifier,
-		"{ticket_lower}":  strings.ToLower(issue.Identifier),
-		"{slug}":          slug(issue.Title),
-		"{linear_branch}": strings.TrimSpace(issue.SuggestedBranch),
+		"{username}":         strings.TrimSpace(username),
+		"{ticket}":           issue.Identifier,
+		"{ticket_lower}":     strings.ToLower(issue.Identifier),
+		"{slug}":             slug(issue.Title),
+		"{linear_branch}":    strings.TrimSpace(issue.SuggestedBranch),
+		"{suggested_branch}": strings.TrimSpace(issue.SuggestedBranch),
 	}
 	for _, placeholder := range placeholderRE.FindAllString(template, -1) {
 		value := values[placeholder]

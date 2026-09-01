@@ -17,12 +17,16 @@ type Team struct {
 	Name string
 }
 
-// Issue is one Linear issue. The identifier ("ENG-3971") names the worktree
-// directory. SuggestedBranch is Linear's editable branch-name suggestion; the
-// repository's actual branch is resolved separately.
+// Issue is one provider work item adapted for lw's existing flow. Identifier
+// is the safe worktree directory key; Reference is the provider's human-facing
+// name, such as ENG-3971 or owner/repository#123. The repository's actual Git
+// branch is resolved separately.
 type Issue struct {
 	ID              string
+	Provider        string
+	ExternalID      string
 	Identifier      string
+	Reference       string
 	Title           string
 	URL             string
 	StateType       string // triage | backlog | unstarted | started | completed | canceled
@@ -33,6 +37,16 @@ type Issue struct {
 	ProjectID       string // empty when the issue has no project
 	ProjectName     string
 	SuggestedBranch string
+	BranchKeys      []string
+}
+
+// DisplayReference keeps older in-process callers compatible while provider
+// adapters supply a richer reference.
+func (i Issue) DisplayReference() string {
+	if i.Reference != "" {
+		return i.Reference
+	}
+	return i.Identifier
 }
 
 // Branch is the git branch selected for an issue. ExistingLocal means it can be
@@ -91,8 +105,8 @@ type FlowResult struct {
 	Created bool
 }
 
-// Credential is the one supported authentication method: a personal Linear API
-// key with Read permission. It is never written to a file or a process argument.
+// Credential carries the existing Linear personal API key boundary. Other
+// providers own their read-only authentication inside their adapters.
 type Credential struct {
 	Key string
 }

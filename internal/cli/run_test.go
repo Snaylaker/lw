@@ -16,6 +16,7 @@ import (
 	"github.com/snaylaker/lw/internal/gitrepo"
 	"github.com/snaylaker/lw/internal/tui"
 	"github.com/snaylaker/lw/internal/worktree"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 const issueResponse = `{"data":{"issues":{"nodes":[{"id":"issue-ENG-3971","identifier":"ENG-3971","title":"Improve command completion output","url":"https://linear.app/acme/issue/ENG-3971","state":{"name":"In Progress","type":"started"},"team":{"id":"team-eng","key":"ENG","name":"Engineering"},"project":{"id":"project-tools","name":"Billing"}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`
@@ -599,6 +600,119 @@ func TestRunIssueFlagInfersARepositoryOutsideGit(t *testing.T) {
 				t.Errorf("stdout = %q", h.stdout.String())
 			}
 		})
+	}
+}
+
+type customIssueProvider struct{}
+
+func (customIssueProvider) ID() issueprovider.ID { return "tickets" }
+func (customIssueProvider) DisplayName() string  { return "Tickets" }
+func (customIssueProvider) ValidateReference(reference string) error {
+	if reference != "T-42" {
+		return errors.New("expected T-42")
+	}
+	return nil
+}
+func (customIssueProvider) Resolve(context.Context, string) (issueprovider.WorkItem, error) {
+	return issueprovider.WorkItem{
+		Provider: "tickets", ExternalID: "42", Reference: "T-42", WorktreeKey: "T-42",
+		Title: "Custom provider issue", URL: "https://tickets.example.com/T-42", BranchKeys: []string{"T-42"},
+	}, nil
+}
+func (customIssueProvider) Search(context.Context, string) ([]issueprovider.WorkItem, error) {
+	return nil, nil
+}
+
+func TestCompileTimeProviderExtensionUsesTheSameFlow(t *testing.T) {
+	h := newHarness(t)
+	h.writeConfig(map[string]any{"worktreeRoot": h.worktreeRoot, "issueProvider": "tickets"})
+	h.providers = []issueprovider.Provider{customIssueProvider{}}
+
+	code := h.run("--issue", "T-42", "--branch", "alex/t-42-custom")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	metadata, err := worktree.ReadMetadata(context.Background(), h.worktreeFor("T-42"), nil)
+	if err != nil || metadata == nil || metadata.Provider != "tickets" {
+		t.Fatalf("metadata = %+v, %v", metadata, err)
+	}
+
+	h.stdout.Reset()
+	h.stderr.Reset()
+	h.env[providerEnvVar] = "tickets"
+	if code := h.run("doctor"); code != 0 || !strings.Contains(h.stdout.String(), "Tickets provider: available as a compiled extension") {
+		t.Fatalf("doctor code = %d, stdout = %q, stderr = %q", code, h.stdout.String(), h.stderr.String())
+	}
+}
+
+func TestInteractiveGitHubSearchUsesTheProviderWithoutLinearOnboarding(t *testing.T) {
+	h := newHarness(t)
+	h.writeConfig(map[string]any{})
+	h.http.response = `{"items":[{"id":42,"node_id":"I_kw42","number":42,"title":"Repair cache invalidation","html_url":"https://github.com/acme/api/issues/42","state":"open","repository_url":"https://api.github.com/repos/acme/api"}]}`
+	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
+		if deps.ProviderName != "GitHub" || deps.BrowseCollections || deps.Credential != nil {
+			t.Fatalf("provider launcher deps = %+v", deps)
+		}
+		issues, err := deps.SearchIssues(context.Background(), "cache")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(issues) != 1 || issues[0].DisplayReference() != "acme/api#42" {
+			t.Fatalf("issues = %+v", issues)
+		}
+		return tui.LauncherOutcome{Cancelled: true}, nil
+	}
+
+	if code := h.run("--provider", "github"); code != 130 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if h.credential.calls != 0 {
+		t.Fatal("GitHub search attempted Linear credential resolution")
+	}
+}
+
+func TestDirectGitHubIssueUsesTheSameWorktreeFlow(t *testing.T) {
+	h := newHarness(t)
+	h.writeConfig(map[string]any{"worktreeRoot": h.worktreeRoot})
+	h.env["GITHUB_TOKEN"] = "github_test"
+	h.http.response = `{"id":42,"node_id":"I_kw42","number":42,"title":"Repair cache invalidation","html_url":"https://github.com/acme/api/issues/42","state":"open"}`
+
+	code := h.run("--issue", "github:acme/api#42", "--branch", "alex/gh-42-cache")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	wantPath := h.worktreeFor("GH-acme-api-42")
+	if h.stdout.String() != wantPath+"\n" {
+		t.Fatalf("stdout = %q, want %q", h.stdout.String(), wantPath+"\n")
+	}
+	metadata, err := worktree.ReadMetadata(context.Background(), wantPath, nil)
+	if err != nil || metadata == nil {
+		t.Fatalf("metadata = %+v, %v", metadata, err)
+	}
+	if metadata.Provider != "github" || metadata.Reference != "acme/api#42" || metadata.Branch != "alex/gh-42-cache" {
+		t.Fatalf("metadata = %+v", metadata)
+	}
+}
+
+func TestDirectJiraIssueUsesTheSameWorktreeFlow(t *testing.T) {
+	h := newHarness(t)
+	h.writeConfig(map[string]any{"worktreeRoot": h.worktreeRoot})
+	h.env["JIRA_BASE_URL"] = "https://jira.example.com"
+	h.env["JIRA_EMAIL"] = "alex@example.com"
+	h.env["JIRA_API_TOKEN"] = "jira_test"
+	h.http.response = `{"id":"10042","key":"OPS-42","fields":{"summary":"Repair cache invalidation","status":{"name":"In Progress","statusCategory":{"key":"indeterminate"}},"project":{"id":"10000","key":"OPS","name":"Operations"}}}`
+
+	code := h.run("--provider", "jira", "--issue", "OPS-42", "--branch", "alex/ops-42-cache")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	wantPath := h.worktreeFor("OPS-42")
+	if h.stdout.String() != wantPath+"\n" {
+		t.Fatalf("stdout = %q, want %q", h.stdout.String(), wantPath+"\n")
+	}
+	metadata, err := worktree.ReadMetadata(context.Background(), wantPath, nil)
+	if err != nil || metadata == nil || metadata.Provider != "jira" || metadata.Reference != "OPS-42" {
+		t.Fatalf("metadata = %+v, %v", metadata, err)
 	}
 }
 

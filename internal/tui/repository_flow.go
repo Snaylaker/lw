@@ -18,7 +18,7 @@ func (m *Launcher) openRepos(issue domain.Issue) tea.Cmd {
 
 	m.screen = ScreenRepos
 	picker := NewRepoPicker(RepoPickerOptions{
-		Context:  issue.Identifier,
+		Context:  issue.DisplayReference(),
 		OnSelect: func(repo domain.Repo) { m.enqueue(m.chooseRepo(repo)) },
 	})
 	m.show(picker)

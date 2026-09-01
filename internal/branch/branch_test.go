@@ -137,6 +137,17 @@ func TestValidateTemplateDoesNotNeedAnIssue(t *testing.T) {
 	}
 }
 
+func TestMatchingBranchesUsesProviderBranchKeys(t *testing.T) {
+	found := refs{
+		local:  map[string]bool{"alex/42-repair-cache": true, "alex/unrelated": true},
+		remote: map[string]string{},
+	}
+	matches := matchingBranches(found, []string{"GH-acme-api-42", "42"})
+	if len(matches) != 1 || matches[0].Name != "alex/42-repair-cache" {
+		t.Fatalf("matches = %+v", matches)
+	}
+}
+
 func TestExpandRejectsUnknownAndMissingTemplateVariables(t *testing.T) {
 	if _, err := Expand("{owner}/{ticket}", ticket(), "mehdi"); !lwerr.Is(err, lwerr.ConfigInvalid) {
 		t.Fatalf("unknown placeholder error = %v", err)

@@ -1,24 +1,24 @@
 # lw — architecture
 
-Search Linear issues, get a git worktree, and get its path on stdout.
+Search issues, get a Git worktree, and get its path on stdout.
 
-**Linear and git. Nothing else.** No terminal multiplexer, workspace manager, editor,
-agent, plugin host, or forge API.
+**Read-only issue providers and Git. Nothing else.** No terminal multiplexer, workspace manager,
+editor, agent, runtime plugin host, or provider mutation API.
 
 ## The flow
 
 ```text
-inspect cwd/--repo → onboarding (only missing key/folder) → issue search
+inspect cwd/--repo → provider selection/auth → issue search
   → remembered or selected repository → resolve branch → create/reuse worktree → print path
 ```
 
-Plain `lw` opens one workspace-wide search input:
+Plain `lw` opens one search input for the selected provider. Linear supports:
 
 - `DEMO` lists active issues in the DEMO team.
 - `DEMO-4009` resolves the exact active issue.
 - `timeout` uses Linear's ranked workspace text search.
 
-`Tab` cycles optional project and team browsers. Each loads one bounded page; selecting a
+For Linear, `Tab` cycles optional project and team browsers. Each loads one bounded page; selecting a
 project or team loads one bounded page of active issues, with local filtering in the scoped
 views. Cycling back preserves the previous issue query. Project and team pins persist as
 stable IDs and rank matching browser rows first; they are preferences, not list caches.
@@ -46,12 +46,15 @@ bound to stderr, so command substitution captures neither escape codes nor progr
 ## Layout
 
 ```text
-cmd/lw              the only binary
+lw.go               public Run entry point for custom binaries
+cmd/lw              the official binary
+provider             public compile-time provider contract and neutral WorkItem
+internal/providers   adapters and Linear/GitHub/Jira implementations
 internal/domain     shared project, issue, repository, stage and result values
 internal/lwerr      kind + message + next action
 internal/config     config.json, repository routing and branch rules, atomic writes
 internal/credential resolves, saves and removes the Linear key through a vault boundary
-internal/linear     GraphQL transport, exact/team/text search and project/team browsing
+internal/linear     Linear GraphQL transport and optional project/team capabilities
 internal/gitrepo    repository validation and one-level discovery
 internal/branch     ref discovery, template expansion and branch planning
 internal/worktree   creation, reuse, metadata and pruning
@@ -62,6 +65,28 @@ internal/cli        parsing, dispatch and orchestration
 
 The TUI receives side effects as callbacks. It never imports the Linear, config or worktree
 packages. Tests replace those callbacks; worktree tests use real temporary Git repositories.
+
+## Provider boundary
+
+The public `provider.Provider` interface exposes only identity, reference validation, exact
+resolution, and search. It returns a neutral `provider.WorkItem` containing separate human
+reference and filesystem-safe worktree key values. Providers cannot access Git, config, TUI, or
+worktree operations.
+
+```text
+Linear GraphQL ─┐
+GitHub REST ────┼→ provider.WorkItem → domain.Issue → branch → worktree
+Jira REST ──────┘
+```
+
+`internal/providers` adapts neutral items to the existing domain during migration. Durable
+provider scopes feed the same repository-routing store: Linear project/team, GitHub repository,
+or Jira project. The released binary wires three built-ins; the public Go interface supports
+custom builds through the root `lw.Run` API, not runtime plugin loading.
+
+Provider choice is an explicit reference prefix, `--provider`, `LW_ISSUE_PROVIDER`, config, then
+Linear. GitHub and Jira use environment credentials; only Linear has interactive onboarding and
+collection browsers.
 
 ## Linear search
 
@@ -103,17 +128,18 @@ without a project. Repository roots are scanned exactly one level deep.
 
 A worktree lives at `<worktreeRoot>/<repo name>/<IDENTIFIER>`, default
 `~/.lw/worktrees`. Its directory keeps the stable issue identifier while its Git branch
-follows the repository's convention.
+follows the repository's convention. GitHub references such as `owner/repo#42` use a safe
+worktree key such as `GH-owner-repo-42`; the original reference remains in metadata.
 
 After repository selection, `internal/branch` fetches origin, searches local and remote refs
 for the ticket, validates names with Git, and returns a plan. One existing match is automatic;
-several open a picker. With no match, interactive mode edits Linear's suggestion while direct
+several open a picker. With no match, interactive mode edits the provider suggestion while direct
 mode requires `--branch` or a repository template. New branches start from the fetched remote
 default branch. Re-selecting an issue reuses its existing worktree.
 
 `lw branches` manages these repository-scoped rules through config's atomic writer. Rule
 lookup and mutation use the same normalized-origin identity as the worktree flow. `preview`
-is the only management action that contacts Linear; it expands the real issue and delegates
+is the only management action that contacts the selected provider; it expands the real issue and delegates
 final ref validation to Git.
 
 Metadata lives in the linked worktree's private Git directory as `lw.json`, never in the
@@ -122,6 +148,9 @@ checkout:
 ```json
 {
   "identifier": "DEMO-4009",
+  "provider": "linear",
+  "externalId": "issue-uuid",
+  "reference": "DEMO-4009",
   "title": "Improve workspace startup prompt",
   "url": "https://linear.app/acme/issue/DEMO-4009",
   "team": "DEMO",
@@ -134,10 +163,10 @@ checkout:
 
 ## Credentials
 
-Resolution order is `credentialCommand`, `LINEAR_API_KEY`, then onboarding's saved key.
-Onboarding validates a masked key, prefers the system keychain, and requires explicit
-consent before owner-only file storage. Git and credential-helper children receive an
-environment without `LINEAR_API_KEY`.
+Linear resolves `credentialCommand`, `LINEAR_API_KEY`, then onboarding's saved key. GitHub reads
+`GITHUB_TOKEN` or `GH_TOKEN`, with unauthenticated public access as a fallback. Jira Cloud reads
+its URL, email, and API token from environment variables. Only Linear persists credentials.
+Git children and launched commands receive no provider API token.
 
 ## Errors and cancellation
 
@@ -147,6 +176,6 @@ worktree exists it is never rolled back because later presentation was interrupt
 
 ## Non-goals
 
-No Linear mutations, editor or agent launching, commits, pushes, pull requests, plugin
+No provider mutations, editor or agent launching, commits, pushes, pull requests, runtime plugin
 system, daemon, recursive repository search, or runtime dependency beyond git and the
 host's optional credential service.

@@ -76,10 +76,11 @@ func TestAsAndIsSeeThroughWrapping(t *testing.T) {
 // Section 12 enumerates the kinds. The set is the contract, not just the
 // spelling of each member: an extra kind is a distinction the spec does not
 // make, and a missing one is a failure the tool cannot describe.
-func TestKindsAreExactlyTheSevenInSection10(t *testing.T) {
+func TestKindsAreExactlyThoseInSection10(t *testing.T) {
 	want := []Kind{
 		"auth_required",
 		"linear_unavailable",
+		"provider_unavailable",
 		"not_a_repo",
 		"config_invalid",
 		"worktree_conflict",

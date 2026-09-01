@@ -30,6 +30,7 @@ type Options struct {
 	Repo     string
 	Issue    string
 	Branch   string
+	Provider string
 	Username string
 	JSON     bool // context --json
 	// Yes applies `lw prune`. Without it the command only reports, because
@@ -65,6 +66,7 @@ var flagSpecs = map[string]flagSpec{
 	"--repo":     {commands: repositoryCommands, apply: func(o *Options, v string) { o.Repo = v }},
 	"--issue":    {commands: flowCommands, apply: func(o *Options, v string) { o.Issue = v }},
 	"--branch":   {commands: flowCommands, apply: func(o *Options, v string) { o.Branch = v }},
+	"--provider": {commands: repositoryCommands, apply: func(o *Options, v string) { o.Provider = v }},
 	"--username": {commands: []string{commandBranches}, apply: func(o *Options, v string) { o.Username = v }},
 	"--json":     {boolean: true, commands: []string{commandContext}, apply: func(o *Options, _ string) { o.JSON = true }},
 	"--yes":      {boolean: true, commands: []string{commandPrune}, apply: func(o *Options, _ string) { o.Yes = true }},
@@ -152,11 +154,11 @@ func Parse(argv []string) (Options, *lwerr.Error) {
 		}
 	}
 
-	// An identifier Linear could never hold is the invocation being wrong, not
-	// the world being in a bad state, so it is answered here — with the help
-	// text, before a config file or a credential is read — rather than by a
-	// round trip that comes back "no such issue".
-	if opts.Issue != "" && !issueIdentifierRE.MatchString(opts.Issue) {
+	// Without an explicit provider, direct mode preserves Linear's established
+	// invocation contract. GitHub and Jira references use --provider so their
+	// provider-specific validators can accept different shapes.
+	_, _, prefixed := prefixedProviderReference(opts.Issue)
+	if opts.Issue != "" && !prefixed && (opts.Provider == "" || strings.EqualFold(opts.Provider, "linear")) && !issueIdentifierRE.MatchString(opts.Issue) {
 		return Options{}, usagef("--issue takes an identifier like ENG-3971, not %q", opts.Issue)
 	}
 	if opts.Command == commandLaunch && len(opts.Args) == 0 && !opts.Help && !opts.Version {
@@ -165,8 +167,6 @@ func Parse(argv []string) (Options, *lwerr.Error) {
 	return opts, nil
 }
 
-// issueIdentifierRE is SPEC §6's ^([A-Za-z0-9]+)-(\d+)$, the one shape --issue
-// accepts.
 var issueIdentifierRE = regexp.MustCompile(`^[A-Za-z0-9]+-[0-9]+$`)
 
 // isFlag reports whether arg is a flag rather than a positional argument. A

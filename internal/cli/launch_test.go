@@ -112,10 +112,13 @@ func TestLaunchMapsASignalledChildAfterCancellationTo130(t *testing.T) {
 	}
 }
 
-func TestChildEnvironmentIsSortedAndRemovesLinearKeyCaseInsensitively(t *testing.T) {
+func TestChildEnvironmentIsSortedAndRemovesProviderSecretsCaseInsensitively(t *testing.T) {
 	got := childEnvironment(map[string]string{
 		"ZED":            "last",
 		"linear_api_key": "secret",
+		"github_token":   "secret",
+		"GH_TOKEN":       "secret",
+		"jira_api_token": "secret",
 		"ALPHA":          "first",
 	})
 	want := []string{"ALPHA=first", "ZED=last"}

@@ -65,6 +65,9 @@ func TestMetadataIsPlainDocumentedJSON(t *testing.T) {
 	// `summary` on a fresh worktree must get "", never undefined.
 	want := map[string]any{
 		"identifier": "ENG-3971",
+		"provider":   "",
+		"externalId": "",
+		"reference":  "ENG-3971",
 		"title":      "Something to do in ENG-3971",
 		"url":        "https://linear.app/acme/issue/ENG-3971",
 		"team":       "ENG",

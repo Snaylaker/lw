@@ -24,3 +24,17 @@ Status: implemented.
 - Inspect it with `lw branches show-rule`.
 - Expand and Git-validate it against a real issue with `lw branches preview`.
 - Remove it with `lw branches unset-rule`.
+
+## Read issues from multiple providers
+
+Status: implemented.
+
+- Expose the compile-time `provider.Provider` and neutral `provider.WorkItem` contracts.
+- Preserve Linear as the default with its existing onboarding and collection browsers.
+- Resolve and search read-only GitHub issues through REST, excluding pull requests.
+- Resolve and search read-only Jira Cloud issues through REST and enhanced JQL.
+- Keep provider references separate from filesystem-safe worktree identities.
+- Route all providers through the same branch discovery, templates, worktree, metadata, and
+  command-launch behavior.
+
+Runtime provider discovery remains out of scope; custom providers require a custom build.

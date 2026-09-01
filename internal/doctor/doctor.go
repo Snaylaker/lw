@@ -7,7 +7,7 @@
 // Every check is a pure function of injected dependencies, so the whole report
 // can be produced without touching the network, the user's repositories, or a
 // real credential helper. doctor makes no network call at all: it reports that a
-// key is *available*, never that Linear would accept it.
+// credential is *available*, never that a provider would accept it.
 package doctor
 
 import (
@@ -25,6 +25,7 @@ import (
 	"github.com/snaylaker/lw/internal/credential"
 	"github.com/snaylaker/lw/internal/gitrepo"
 	"github.com/snaylaker/lw/internal/lwerr"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 // Status is the verdict of one check. The values double as the text printed in
@@ -60,6 +61,7 @@ type Deps struct {
 	ConfigPath string            // empty means config.Path(env, platform)
 	Credential credential.Runner // nil means the real shell, for credentialCommand
 	Vault      credential.Vault  // nil means the system keychain with file fallback
+	Extensions map[string]string // provider ID to display name for custom binaries
 }
 
 // The labels, in report order. They are the check names from the specification,
@@ -90,6 +92,7 @@ type resolved struct {
 	configPath string
 	credential credential.Runner
 	vault      credential.Vault
+	extensions map[string]string
 }
 
 func resolve(deps Deps) resolved {
@@ -101,6 +104,7 @@ func resolve(deps Deps) resolved {
 		configPath: deps.ConfigPath,
 		credential: deps.Credential,
 		vault:      deps.Vault,
+		extensions: deps.Extensions,
 	}
 	if r.env == nil {
 		r.env = config.OSEnv()
@@ -248,6 +252,25 @@ func repositoryCheck(ctx context.Context, env resolved) Check {
 // read of their own secret store, still no network call, and the key never
 // leaves this function.
 func credentialCheck(ctx context.Context, env resolved, stored *config.StoredConfig) Check {
+	providerID := providerName(stored, env.env)
+	switch providerID {
+	case issueprovider.GitHub:
+		return githubCredentialCheck(env.env)
+	case issueprovider.Jira:
+		return jiraCredentialCheck(env.env)
+	case issueprovider.Linear:
+		return linearCredentialCheck(ctx, env, stored)
+	default:
+		if name := strings.TrimSpace(env.extensions[string(providerID)]); name != "" {
+			return Check{Label: name + " provider", Status: StatusOK, Detail: "available as a compiled extension"}
+		}
+		return Check{Label: "issue provider", Status: StatusWarn,
+			Detail:     "unknown provider " + string(providerID),
+			NextAction: "use linear, github, jira, or compile the configured extension"}
+	}
+}
+
+func linearCredentialCheck(ctx context.Context, env resolved, stored *config.StoredConfig) Check {
 	check := Check{Label: labelCredential, Status: StatusOK}
 	found, err := credential.Resolve(ctx, credential.Options{
 		Env:        env.env,
@@ -266,6 +289,53 @@ func credentialCheck(ctx context.Context, env resolved, stored *config.StoredCon
 	}
 	check.Detail = "available via " + string(found.Source)
 	return check
+}
+
+func githubCredentialCheck(env map[string]string) Check {
+	check := Check{Label: "GitHub credential", Status: StatusOK}
+	source := "GITHUB_TOKEN"
+	token := strings.TrimSpace(env[source])
+	if token == "" {
+		source = "GH_TOKEN"
+		token = strings.TrimSpace(env[source])
+	}
+	if token != "" {
+		check.Detail = "available via " + source
+		return check
+	}
+	check.Status = StatusWarn
+	check.Detail = "no token; only public GitHub issues are available"
+	check.NextAction = "set GITHUB_TOKEN for private issues and a higher API rate limit"
+	return check
+}
+
+func jiraCredentialCheck(env map[string]string) Check {
+	check := Check{Label: "Jira credential", Status: StatusOK}
+	var missing []string
+	for _, name := range []string{"JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"} {
+		if strings.TrimSpace(env[name]) == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		check.Detail = "available via Jira environment variables"
+		return check
+	}
+	check.Status = StatusWarn
+	check.Detail = "missing " + strings.Join(missing, ", ")
+	check.NextAction = "set the Jira Cloud URL, account email, and API token"
+	return check
+}
+
+func providerName(stored *config.StoredConfig, env map[string]string) issueprovider.ID {
+	value := strings.ToLower(strings.TrimSpace(env["LW_ISSUE_PROVIDER"]))
+	if value == "" && stored != nil {
+		value = stored.IssueProvider
+	}
+	if value == "" || value == "linear" {
+		return issueprovider.Linear
+	}
+	return issueprovider.ID(value)
 }
 
 // credentialCommand is the configured helper, if the config file could be read

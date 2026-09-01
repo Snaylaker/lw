@@ -10,8 +10,9 @@ import (
 	"github.com/snaylaker/lw/internal/credential"
 	"github.com/snaylaker/lw/internal/domain"
 	"github.com/snaylaker/lw/internal/gitrepo"
-	"github.com/snaylaker/lw/internal/linear"
 	"github.com/snaylaker/lw/internal/lwerr"
+	"github.com/snaylaker/lw/internal/providers"
+	issueprovider "github.com/snaylaker/lw/provider"
 )
 
 const (
@@ -47,7 +48,7 @@ func runBranches(ctx context.Context, opts Options, env *execEnv) int {
 	case branchActionShow:
 		return showBranchRule(preferred, keys, stored, env)
 	case branchActionPreview:
-		return previewBranchRule(ctx, value, repo, preferred, keys, stored, env)
+		return previewBranchRule(ctx, opts, value, repo, preferred, keys, stored, env)
 	case branchActionUnset:
 		return unsetBranchRule(preferred, keys, stored, env)
 	default:
@@ -79,11 +80,11 @@ func parseBranchAction(opts Options) (action, value string, err error) {
 	if opts.Username != "" && action != branchActionSet {
 		return "", "", usagef("--username is only valid with lw branches set-rule")
 	}
+	if opts.Provider != "" && action != branchActionPreview {
+		return "", "", usagef("--provider is only valid with lw branches preview")
+	}
 	if expected == 2 {
 		value = opts.Args[1]
-	}
-	if action == branchActionPreview && !issueIdentifierRE.MatchString(value) {
-		return "", "", usagef("lw branches preview takes an identifier like ENG-3971, not %q", value)
 	}
 	return action, value, nil
 }
@@ -144,7 +145,7 @@ func showBranchRule(preferred string, keys []string, stored *config.StoredConfig
 	return 0
 }
 
-func previewBranchRule(ctx context.Context, identifier string, repo domain.Repo, preferred string, keys []string, stored *config.StoredConfig, env *execEnv) int {
+func previewBranchRule(ctx context.Context, opts Options, identifier string, repo domain.Repo, preferred string, keys []string, stored *config.StoredConfig, env *execEnv) int {
 	_, template, username, ok := config.BranchRuleEntry(stored, keys...)
 	if !ok {
 		return Report(missingBranchRule(preferred), env.stderr)
@@ -152,19 +153,37 @@ func previewBranchRule(ctx context.Context, identifier string, repo domain.Repo,
 	if err := validateBranchRuleTemplate(template, username); err != nil {
 		return Report(err, env.stderr)
 	}
-	resolved, err := credential.Resolve(ctx, credential.Options{
-		Env: env.env, Platform: env.platform, Command: storedCredentialCommand(stored),
-		ConfigPath: env.configPath(), Run: env.credential, Vault: env.vault,
-	})
+	providerOpts := opts
+	providerOpts.Issue = identifier
+	providerID, err := selectedProvider(providerOpts, stored, env.env, env.providers)
 	if err != nil {
 		return Report(err, env.stderr)
 	}
-	issue, err := linear.ResolveIssue(ctx, linear.ResolveIssueRequest{
-		Credential: resolved.Credential, Identifier: identifier, HTTPClient: env.http,
-	})
+	if _, reference, ok := prefixedProviderReference(identifier); ok {
+		identifier = reference
+	}
+	var resolved credential.Resolved
+	if providerID == issueprovider.Linear {
+		resolved, err = credential.Resolve(ctx, credential.Options{
+			Env: env.env, Platform: env.platform, Command: storedCredentialCommand(stored),
+			ConfigPath: env.configPath(), Run: env.credential, Vault: env.vault,
+		})
+		if err != nil {
+			return Report(err, env.stderr)
+		}
+	}
+	source, err := buildProvider(ctx, providerID, resolved.Credential, &repo, env)
 	if err != nil {
 		return Report(err, env.stderr)
 	}
+	if err := source.ValidateReference(identifier); err != nil {
+		return Report(usagef("issue is not valid for %s: %s", source.DisplayName(), err), env.stderr)
+	}
+	item, err := source.Resolve(ctx, identifier)
+	if err != nil {
+		return Report(err, env.stderr)
+	}
+	issue := providers.ToDomain(item)
 	name, err := branchname.Expand(template, issue, username)
 	if err != nil {
 		return Report(err, env.stderr)

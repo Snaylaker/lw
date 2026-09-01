@@ -70,7 +70,7 @@ func TestContextPrintsTheTicketAndTheReadOnlyNotice(t *testing.T) {
 	}
 	want := "Ticket: ENG-3971 — Improve command completion output\n" +
 		"https://linear.app/acme/issue/ENG-3971\n" +
-		"This context is read-only; it never writes to Linear.\n"
+		"This context is read-only; it never writes to the issue provider.\n"
 	if h.stdout.String() != want {
 		t.Errorf("stdout = %q, want %q", h.stdout.String(), want)
 	}
@@ -95,7 +95,7 @@ func TestContextPrintsTheSummaryOnlyWhenItIsSet(t *testing.T) {
 	want := "Ticket: ENG-3971 — Improve command completion output\n" +
 		"https://linear.app/acme/issue/ENG-3971\n" +
 		"Summary: root cause is the dedupe window\n" +
-		"This context is read-only; it never writes to Linear.\n"
+		"This context is read-only; it never writes to the issue provider.\n"
 	if h.stdout.String() != want {
 		t.Errorf("stdout = %q, want %q", h.stdout.String(), want)
 	}
@@ -130,6 +130,9 @@ func TestContextJSONPrintsTheMetadataObjectVerbatim(t *testing.T) {
 	}
 	want := map[string]any{
 		"identifier": "ENG-3971",
+		"provider":   "",
+		"externalId": "",
+		"reference":  "ENG-3971",
 		"title":      "Improve command completion output",
 		"url":        "https://linear.app/acme/issue/ENG-3971",
 		"team":       "ENG",

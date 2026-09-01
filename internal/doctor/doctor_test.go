@@ -377,6 +377,25 @@ func TestRepositoryCheckWarnsWhenTheDirectoryIsUnknown(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsGitHubAndJiraCredentialSources(t *testing.T) {
+	t.Run("GitHub token", func(t *testing.T) {
+		deps := baseDeps(t)
+		deps.Env["LW_ISSUE_PROVIDER"] = "github"
+		deps.Env["GITHUB_TOKEN"] = "github_test"
+		check := find(t, run(t, deps), "GitHub credential")
+		expect(t, check, StatusOK, "available via GITHUB_TOKEN", "")
+	})
+	t.Run("Jira variables", func(t *testing.T) {
+		deps := baseDeps(t)
+		deps.Env["LW_ISSUE_PROVIDER"] = "jira"
+		deps.Env["JIRA_BASE_URL"] = "https://jira.example.com"
+		deps.Env["JIRA_EMAIL"] = "alex@example.com"
+		deps.Env["JIRA_API_TOKEN"] = "jira_test"
+		check := find(t, run(t, deps), "Jira credential")
+		expect(t, check, StatusOK, "available via Jira environment variables", "")
+	})
+}
+
 // --------------------------------------------------------- the Linear credential
 
 // The environment is the second source, and the report names it — never the key.

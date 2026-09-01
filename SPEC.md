@@ -1,7 +1,7 @@
 # lw — specification
 
-Search a Linear issue, choose its source repository, create or reuse a Git worktree, and
-print the path.
+Search a Linear, GitHub, or Jira issue, choose its source repository, create or reuse a Git
+worktree, and print the path.
 
 ---
 
@@ -11,9 +11,10 @@ print the path.
 cd "$(lw)"
 ```
 
-`lw` reads Linear and writes local Git worktrees. It starts no editor, shell or agent,
-mutates no Linear data, manages no pull requests, and has no daemon or plugin system. The
-only required executable is `git`.
+`lw` reads one selected issue provider and writes local Git worktrees. It starts no editor,
+shell or agent, mutates no provider data, manages no pull requests, and has no daemon or runtime
+plugin system. The only required executable is `git`. The released binary contains read-only
+Linear, GitHub, and Jira Cloud providers.
 
 ## 2. Commands
 
@@ -28,22 +29,23 @@ only required executable is `git`.
 | `lw prune --auto` / `--no-auto` | persist automatic pruning behavior |
 | `lw logout` | remove the credential saved by onboarding |
 
-Run flags: `--repo <path>`, `--issue <IDENT>`, `--branch <name>`, `--version`, `--help`.
-`--repo` also targets `lw branches`; `--username` is valid only with `branches set-rule`.
+Run flags: `--repo <path>`, `--issue <REFERENCE>`, `--provider <name>`, `--branch <name>`,
+`--version`, `--help`. `--repo` and `--provider` also target `lw branches preview`;
+`--username` is valid only with `branches set-rule`.
 
 Exit codes: `0` success · `1` error · `2` usage · `130` cancelled.
 
 ## 3. Run flow
 
 ```text
-inspect cwd/--repo → conditional onboarding → issue search
+inspect cwd/--repo → select provider → conditional onboarding → issue search
   → remembered/selected repository → resolve branch → worktree → stdout path
 ```
 
 1. Validate an explicit `--repo` and verify Git can run.
-2. Resolve credentials; if missing, run credential onboarding.
+2. Select `linear`, `github`, or `jira`; resolve that provider's read-only credentials.
 3. If repository roots are missing, ask for the parent folder containing repositories.
-4. Without `--issue`, open workspace-wide issue search; `Tab` cycles optional project and team browsers.
+4. Without `--issue`, open provider issue search; Linear additionally offers project and team browsers.
 5. Resolve or select the source repository.
 6. Fetch and resolve the ticket branch; ask only when the result is ambiguous or a new
    branch needs an editable name.
@@ -57,9 +59,19 @@ not-a-repository error.
 Bubble Tea and Lip Gloss both derive output behavior from stderr. stdout must never contain
 TUI frames, progress, warnings or errors.
 
-## 4. Interactive issue search
+## 4. Issue providers and interactive search
 
-One input supports three modes:
+Provider resolution order is a prefix on the direct reference (`github:owner/repo#42`),
+`--provider`, `LW_ISSUE_PROVIDER`, `issueProvider` in config, then `linear`. A prefix and flag
+that disagree are a usage error. Non-Linear direct references should use a prefix or explicit
+flag so parsing does not depend on configuration.
+
+Every provider implements the public compile-time interface in `provider.Provider`: stable ID,
+display name, reference validation, exact resolution, and search returning neutral `WorkItem`
+values. Providers never receive Git or worktree operations. Custom binaries pass implementations
+to the public `lw.Run` entry point; the interface is not runtime plugin discovery.
+
+Linear's one-input search supports three modes:
 
 ```text
 DEMO-4009  exact identifier lookup
@@ -94,7 +106,11 @@ Team and exact lookups use `issues` with `team.key` or `team.key + number` filte
 Workspace and team search each return at most 50 rows per query so typing a team key never
 starts a long pagination pass.
 
-### Optional project and team browsers
+GitHub uses REST issue search, adds `is:issue`, and excludes pull requests. With a GitHub
+repository context, `#42` is accepted; otherwise use `owner/repository#42`. Jira Cloud uses the
+enhanced JQL search endpoint and issue keys such as `OPS-42`. Both return at most 20 rows.
+
+### Optional Linear project and team browsers
 
 `Tab` cycles Issues → Projects → Teams → Issues. Each browser loads at most 50 rows and
 filters them locally. Selecting a project or team loads at most 50 of its active issues into
@@ -109,15 +125,15 @@ remains the source of truth.
 Resolution:
 
 1. `--repo` — validated before network work and skips selection.
-2. For interactive selection, a valid repository remembered for `issue.project.id`.
-3. For a projectless issue, a valid repository remembered for `issue.team.id`.
+2. For interactive selection, a valid repository remembered for the issue's most specific
+durable provider scope: Linear project/team, GitHub repository, or Jira project.
 4. Otherwise the repository picker:
    - current checkout (`●`)
    - recents, newest first
    - repositories directly below configured roots
 
-A project association is more specific and never falls back to a team association for that
-same issue. Team associations exist only for projectless issues. Invalid/stale paths reopen
+For Linear, a project association is more specific and never falls back to a team association
+for that same issue. Team associations exist only for projectless issues. Invalid/stale paths reopen
 the picker. Explicit selections update recents and the applicable association atomically.
 
 Repository root discovery scans exactly one level. A linked worktree resolves to its main
@@ -127,13 +143,14 @@ checkout. An unborn repository fails with `<name> has no commits yet`.
 
 The worktree identity and Git branch are separate:
 
-- Path: `<worktreeRoot>/<repo name>/<IDENTIFIER>`, default `~/.lw/worktrees`.
+- Path: `<worktreeRoot>/<repo name>/<WORKTREE_KEY>`, default `~/.lw/worktrees`.
 - Branch: resolved from repository refs, `--branch`, or that repository's template.
 
 Before creating anything, `lw` fetches `origin` when present and searches local and
-`origin/*` refs for the issue identifier, case-insensitively and at non-alphanumeric
-boundaries. One match is reused. Several matches open a branch picker. With no match, an
-interactive run opens an editable input prefilled from Linear's `branchName` suggestion.
+`origin/*` refs for the provider's safe worktree key and branch-match keys, case-insensitively
+and at non-alphanumeric boundaries. One match is reused. Several matches open a branch picker.
+With no match, an interactive run opens an editable input prefilled from the provider suggestion
+or a generated `<worktree-key>-<title-slug>` fallback.
 The suggestion starts selected: typing or pasting replaces it, while an arrow key keeps the
 value and begins a smaller edit.
 
@@ -157,6 +174,9 @@ Metadata is atomically written mode `0600` to the worktree's private Git directo
 ```json
 {
   "identifier": "DEMO-4009",
+  "provider": "linear",
+  "externalId": "issue-uuid",
+  "reference": "DEMO-4009",
   "title": "Improve workspace startup prompt",
   "url": "https://linear.app/acme/issue/DEMO-4009",
   "team": "DEMO",
@@ -170,25 +190,26 @@ not roll it back.
 
 ## 7. Credentials
 
-One personal Linear key with Read permission. This is intentionally the local personal-script
-model: there is no hosted service or shared application credential. Linear recommends OAuth
-for hosted applications used by others, so this choice and its limits must remain explicit in
-user-facing documentation. Resolution order:
+All provider access is read-only and local to the user:
 
-1. `credentialCommand`
-2. `LINEAR_API_KEY`
-3. system keychain or explicitly approved owner-only fallback file
+- Linear: `credentialCommand`, then `LINEAR_API_KEY`, then system keychain or explicitly
+  approved owner-only fallback file. Interactive onboarding masks and validates the key.
+- GitHub: `GITHUB_TOKEN`, then `GH_TOKEN`; no token permits public issue access. Optional
+  `GITHUB_API_URL` and `GITHUB_REPOSITORY` configure Enterprise or short-reference context.
+- Jira Cloud: `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`, using HTTPS Basic auth.
 
-Onboarding masks and validates the key with `viewer { id }` before saving. Keychain location
-is service `lw`, account `linear-api-key`. The fallback directory is `0700`, file `0600`.
+Linear keychain location is service `lw`, account `linear-api-key`. The fallback directory is
+`0700`, file `0600`. GitHub and Jira credentials are not persisted by `lw`.
 
-The key must never appear in arguments, logs, errors, Git/worktree data or `config.json`.
-Credential helpers and Git children receive an environment without `LINEAR_API_KEY`.
+No secret may appear in arguments, logs, errors, Git/worktree data or `config.json`.
+Credential helpers, Git children, and launched commands receive an environment without `LINEAR_API_KEY`,
+`GITHUB_TOKEN`, `GH_TOKEN`, or `JIRA_API_TOKEN`.
 
 ## 8. Configuration
 
 ```json
 {
+  "issueProvider": "linear",
   "worktreeRoot": "~/.lw/worktrees",
   "credentialCommand": "op read op://private/linear/api-key",
   "repos": {
@@ -218,7 +239,8 @@ and are not Linear list caches.
 Branch rules are repository-scoped. The preferred key is origin normalized to `host/path`;
 an absolute checkout path is also accepted for a repository without a usable origin.
 Supported placeholders are `{username}`, `{ticket}`, `{ticket_lower}`, `{slug}`, and
-`{linear_branch}`. Missing values and unknown placeholders are errors. Templates are data
+`{suggested_branch}`. `{linear_branch}` remains a backward-compatible alias. Missing values and
+unknown placeholders are errors. Templates are data
 expanded by `lw`; they are never executed as shell commands.
 
 Rule management is repository-scoped:
@@ -230,9 +252,9 @@ lw branches preview [--repo <path>] <IDENT>
 lw branches unset-rule [--repo <path>]
 ```
 
-`set-rule`, `show-rule`, and `unset-rule` do not contact Linear. `set-rule` validates both
+`set-rule`, `show-rule`, and `unset-rule` do not contact a provider. `set-rule` validates both
 template syntax and a representative expansion with Git before writing. `preview` resolves
-exactly one Linear issue, expands the stored rule, validates the result with
+exactly one issue from the selected provider, expands the stored rule, validates the result with
 `git check-ref-format --branch`, and prints exactly the resulting branch name. Rule writes
 preserve every unrelated config section. Removing a rule keeps the global username variable.
 
@@ -244,14 +266,14 @@ preserve every unrelated config section. Removing a rule keeps the global userna
 | `↑`/`↓` | move |
 | `PgUp`/`PgDn` | move by five |
 | `Enter` | select/submit |
-| `Tab` | cycle Issues → Projects → Teams → Issues |
+| `Tab` | Linear only: cycle Issues → Projects → Teams → Issues |
 | `Ctrl+P` | pin/unpin the highlighted project or team |
 | `Esc` | scoped issues → their project/team browser; otherwise back/cancel |
 | `Ctrl+C` | cancel, exit 130 |
 | `Ctrl+R` | repeat issue search or reload the current project/team list |
 
 Progress stages: `preparing` → `creating worktree`. Errors show message, next action, and
-retry only for retryable Linear unavailability.
+retry only for retryable provider unavailability.
 
 ## 10. Pruning and context
 
@@ -265,13 +287,17 @@ uses `--force`.
 
 ## 11. Testing
 
-- No unit test touches real Linear, a real credential or user repositories.
+- No unit test touches a real issue provider, credential, or user repository.
 - Git worktree behavior uses temporary real repositories.
 - HTTP, vault, clock, command runner and TUI effects are injected.
 - TUI behavior is asserted as state transitions.
 - Full tests, race tests, vet, formatting and cross-builds must pass before release.
 
 ## 12. Presentation contracts
+
+Reported error kinds are `auth_required`, `linear_unavailable` (retained for Linear compatibility),
+`provider_unavailable`, `not_a_repo`, `config_invalid`, `worktree_conflict`, `cancelled`, and
+`internal`. Every non-cancelled error includes a next action.
 
 Picker ordering, filtering, status text and key behavior are testable as state without parsing
 terminal escape sequences. Package-level Lip Gloss styles resolve the stderr-bound renderer at

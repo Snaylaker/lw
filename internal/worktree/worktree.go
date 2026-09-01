@@ -360,8 +360,8 @@ func samePath(a, b string) bool {
 }
 
 // validIdentifier guards the one value that becomes a path segment and a branch
-// name. A Linear identifier is always "TEAM-123"; anything else is a bug
-// upstream, not user input to explain.
+// name. Provider adapters must supply a deterministic path-safe key; anything
+// else is a bug upstream, not user input to explain.
 func validIdentifier(identifier string) error {
 	if identifier != "" && identifier != "." && identifier != ".." &&
 		!strings.ContainsAny(identifier, `/\`) {

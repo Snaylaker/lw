@@ -25,7 +25,7 @@ git diff --check
 git diff --exit-code -- THIRD_PARTY_NOTICES.md
 ```
 
-Tests must not contact Linear, read real credentials, or modify user repositories. Use
+Tests must not contact real issue providers, read real credentials, or modify user repositories. Use
 synthetic issue identifiers, titles, organization names, URLs, paths, and API-key-shaped
 values in fixtures.
 
