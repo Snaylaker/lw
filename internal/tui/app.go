@@ -52,11 +52,9 @@ type LauncherDeps struct {
 	ResolveBranch func(context.Context, domain.Repo, domain.Issue) (domain.BranchResolution, error)
 	ChooseBranch  func(context.Context, domain.Repo, string) (domain.Branch, error)
 
-	// ExecuteBranchFlow is the branch-aware path. ExecuteFlow remains as a
-	// compatibility seam for embedders and tests that still use identifier names.
-	ExecuteBranchFlow func(context.Context, domain.Repo, domain.Issue, domain.Branch, func(domain.StageUpdate)) (domain.FlowResult, error)
-	ExecuteFlow       func(context.Context, domain.Repo, domain.Issue, func(domain.StageUpdate)) (domain.FlowResult, error)
-	DoneClose         time.Duration
+	// ExecuteFlow creates or reuses the worktree for the already-resolved branch.
+	ExecuteFlow func(context.Context, domain.Repo, domain.Issue, domain.Branch, func(domain.StageUpdate)) (domain.FlowResult, error)
+	DoneClose   time.Duration
 }
 
 const defaultDoneClose = 700 * time.Millisecond

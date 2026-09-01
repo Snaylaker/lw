@@ -43,11 +43,7 @@ type Metadata struct {
 }
 
 // MetadataOf is the metadata a freshly created worktree carries.
-func MetadataOf(issue domain.Issue, selectedBranch ...string) Metadata {
-	branch := issue.Identifier
-	if len(selectedBranch) > 0 && selectedBranch[0] != "" {
-		branch = selectedBranch[0]
-	}
+func MetadataOf(issue domain.Issue, branch string) Metadata {
 	return Metadata{
 		Identifier: issue.Identifier,
 		Provider:   issue.Provider,

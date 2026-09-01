@@ -377,7 +377,8 @@ func TestRunCancellationLeavesAWorktreeAloneAndPrintsNothing(t *testing.T) {
 	h := newHarness(t).withKey("lin_api_key")
 	h.writeConfig(map[string]any{})
 	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
-		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), testIssue("ENG-1"), nil)
+		issue := testIssue("ENG-1")
+		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), issue, domain.Branch{Name: issue.Identifier}, nil)
 		if err != nil {
 			return tui.LauncherOutcome{}, err
 		}
@@ -776,7 +777,8 @@ func TestAutomaticPruneTargetsTheChosenRepositoryNotTheCurrentOne(t *testing.T) 
 	currentFinished := mergedWorktree(t, h, "ENG-4000")
 	chosen := newRepo(t)
 	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
-		result, err := deps.ExecuteFlow(context.Background(), domain.Repo{Root: chosen, Name: filepath.Base(chosen)}, testIssue("ENG-3971"), nil)
+		issue := testIssue("ENG-3971")
+		result, err := deps.ExecuteFlow(context.Background(), domain.Repo{Root: chosen, Name: filepath.Base(chosen)}, issue, domain.Branch{Name: issue.Identifier}, nil)
 		return tui.LauncherOutcome{Result: &result}, err
 	}
 

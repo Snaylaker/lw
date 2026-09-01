@@ -40,19 +40,12 @@ func (m *Launcher) startFlow(issue domain.Issue, branch domain.Branch) tea.Cmd {
 	m.flowToken++
 	token := m.flowToken
 	send := m.Send
-	executeBranch := m.deps.ExecuteBranchFlow
-	executeLegacy := m.deps.ExecuteFlow
+	execute := m.deps.ExecuteFlow
 	return func() tea.Msg {
 		onStage := func(update domain.StageUpdate) {
 			send(stageMsg{token: token, update: update})
 		}
-		var result domain.FlowResult
-		var err error
-		if executeBranch != nil {
-			result, err = executeBranch(ctx, repo, issue, branch, onStage)
-		} else {
-			result, err = executeLegacy(ctx, repo, issue, onStage)
-		}
+		result, err := execute(ctx, repo, issue, branch, onStage)
 		return flowFinishedMsg{token: token, result: result, err: err}
 	}
 }

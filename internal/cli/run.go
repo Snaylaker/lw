@@ -192,7 +192,7 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 		if err != nil {
 			return nil, Report(err, f.env.stderr)
 		}
-		result, err := f.executeBranch(ctx, *repo, issue, selected, nil)
+		result, err := f.execute(ctx, *repo, issue, selected, nil)
 		if err != nil {
 			return nil, Report(err, f.env.stderr)
 		}
@@ -216,10 +216,9 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 		RepoForIssue: func(issue domain.Issue) (domain.Repo, bool) {
 			return f.repoForIssue(ctx, issue)
 		},
-		RecordRepoUse:     f.recordRepoUse,
-		ResolveBranch:     f.resolveBranch,
-		ChooseBranch:      f.chooseBranch,
-		ExecuteBranchFlow: f.executeBranch,
+		RecordRepoUse: f.recordRepoUse,
+		ResolveBranch: f.resolveBranch,
+		ChooseBranch:  f.chooseBranch,
 	}
 	if f.providerID == issueprovider.Linear {
 		deps.ListProjects = f.listProjects
@@ -258,11 +257,7 @@ func (f *flow) pick(ctx context.Context) (*domain.FlowResult, int) {
 
 // execute is step 4, and the only thing the launcher does that touches disk:
 // create or reuse the worktree. worktree.Open writes the metadata itself.
-func (f *flow) execute(ctx context.Context, repo domain.Repo, issue domain.Issue, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
-	return f.executeBranch(ctx, repo, issue, domain.Branch{Name: issue.Identifier}, onStage)
-}
-
-func (f *flow) executeBranch(ctx context.Context, repo domain.Repo, issue domain.Issue, selected domain.Branch, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
+func (f *flow) execute(ctx context.Context, repo domain.Repo, issue domain.Issue, selected domain.Branch, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
 	// The source repository is only known after the picker. Automatic cleanup
 	// must operate on that choice, never merely on the directory lw started in.
 	pruneMergedIfConfigured(ctx, repo, f.env)

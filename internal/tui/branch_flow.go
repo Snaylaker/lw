@@ -133,9 +133,6 @@ func (p *BranchInput) View() string {
 
 func (m *Launcher) prepareBranch(issue domain.Issue) tea.Cmd {
 	repo := m.chosenRepo()
-	if m.deps.ResolveBranch == nil {
-		return m.startFlow(issue, domain.Branch{Name: issue.Identifier})
-	}
 	m.screen = ScreenBranchLoading
 	m.show(&branchLoadingView{issue: issue, repo: repo})
 	ctx, token := m.beginLoad()
@@ -178,9 +175,6 @@ func (m *Launcher) onBranchResolved(msg branchResolvedMsg) tea.Cmd {
 }
 
 func (m *Launcher) chooseBranch(name string) tea.Cmd {
-	if m.deps.ChooseBranch == nil {
-		return m.startFlow(*m.currentIssue, domain.Branch{Name: name})
-	}
 	ctx, token := m.beginLoad()
 	choose := m.deps.ChooseBranch
 	repo := m.chosenRepo()

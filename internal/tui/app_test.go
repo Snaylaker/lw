@@ -61,7 +61,14 @@ func newApp(t *testing.T, tweak func(*LauncherDeps, *appHarness)) *appHarness {
 			h.recordedRepos = append(h.recordedRepos, repo.Root)
 			h.recordedFor = append(h.recordedFor, issue.ID)
 		},
-		ExecuteFlow: func(ctx context.Context, _ domain.Repo, issue domain.Issue, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
+		ResolveBranch: func(_ context.Context, _ domain.Repo, issue domain.Issue) (domain.BranchResolution, error) {
+			branch := domain.Branch{Name: issue.Identifier}
+			return domain.BranchResolution{Selected: &branch}, nil
+		},
+		ChooseBranch: func(_ context.Context, _ domain.Repo, name string) (domain.Branch, error) {
+			return domain.Branch{Name: name}, nil
+		},
+		ExecuteFlow: func(ctx context.Context, _ domain.Repo, issue domain.Issue, _ domain.Branch, onStage func(domain.StageUpdate)) (domain.FlowResult, error) {
 			h.flowIssues = append(h.flowIssues, issue)
 			onStage(domain.StageUpdate{Stage: domain.StagePreparing, State: domain.StateDone})
 			onStage(domain.StageUpdate{Stage: domain.StageCreatingWorktree, State: domain.StateActive})
@@ -171,7 +178,7 @@ func TestBranchResolutionPromptsForAnAmbiguousExistingBranch(t *testing.T) {
 				{Name: "alex/demo-4009-two", ExistingRemote: "refs/remotes/origin/alex/demo-4009-two"},
 			}}, nil
 		}
-		deps.ExecuteBranchFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
+		deps.ExecuteFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
 			executed = branch.Name
 			return testFlowResult, nil
 		}
@@ -201,7 +208,7 @@ func TestBranchResolutionOffersAnEditableLinearSuggestion(t *testing.T) {
 			chosen = name
 			return domain.Branch{Name: name, Base: "origin/main"}, nil
 		}
-		deps.ExecuteBranchFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
+		deps.ExecuteFlow = func(_ context.Context, _ domain.Repo, _ domain.Issue, branch domain.Branch, _ func(domain.StageUpdate)) (domain.FlowResult, error) {
 			executed = branch.Name
 			return testFlowResult, nil
 		}

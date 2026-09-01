@@ -202,7 +202,7 @@ func (h *harness) launchLauncher(deps tui.LauncherDeps) (tui.LauncherOutcome, er
 // exactly what the real one does before it releases the terminal.
 func (h *harness) picks(issue domain.Issue) {
 	h.launch = func(deps tui.LauncherDeps) (tui.LauncherOutcome, error) {
-		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), issue, nil)
+		result, err := deps.ExecuteFlow(context.Background(), h.repoStructOrDeps(deps), issue, domain.Branch{Name: issue.Identifier}, nil)
 		if err != nil {
 			return tui.LauncherOutcome{}, err
 		}
